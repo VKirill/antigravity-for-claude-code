@@ -254,7 +254,7 @@ When all checklist items are complete and all verifiers report clean:
    └─ Plain-language summary to user (see template below)
    ```
 
-   This is the default. Override only when user explicitly opt-out (see escape hatches below).
+   This is the strict default. There are no prompts or confirmation prompts for PR creation or local-only saving.
 
 3. **Auto-deploy detection.** Before reload:
    - `pm2 list --json` → list of running services with their `pm2_env.pm_cwd`
@@ -266,13 +266,10 @@ When all checklist items are complete and all verifiers report clean:
    - For `apps/web` (Next.js standalone build): MUST `pnpm --filter web build` BEFORE `pm2 reload` — without rebuild the standalone bundle is stale.
    - If no PM2 service matches → skip reload (likely a CLI-only or library change), still announce "no live service affected".
 
-4. **Escape hatches** — switch to old "ask user" mode ONLY when:
+4. **Error handling and Rollbacks** — stop and escalate ONLY when:
 
-   | Trigger | Behavior |
+   | Failure | Behavior |
    |---|---|
-   | User said «через PR» / «pull request» / «сделай PR» at any point in session | Skip merge step. After smoke green: push feat → origin, run `gh pr create`, print PR URL. No auto-merge. |
-   | User said «не пушь» / «оставь локально» / «не деплой» | Merge to local main, do NOT push, do NOT reload PM2. Print worktree path + branch name. |
-   | User said «оставь на ревью» | Keep worktree intact, keep feat branch, do NOT merge. Print path. |
    | Smoke FAILED after deploy | STOP, escalate: «Smoke упал. Откатить merge или фиксить вперёд?» |
    | Push failed (auth / non-ff / network) | STOP, escalate with the exact error. Do NOT attempt force-push. |
    | PM2 reload failed (service crash, restart loop) | Auto-rollback (`pm2 reload --update-env` failed → previous PID still alive in most cases; on hard crash → `git reset --hard origin/main~1 && pnpm build && pm2 reload`). Escalate after rollback. |
@@ -283,7 +280,6 @@ When all checklist items are complete and all verifiers report clean:
    - All verifier subagents returned clean (or only medium/low findings)
    - Adversarial review gate passed (or codex-plugin-cc absent)
    - Worktree git status clean (no uncommitted changes left)
-   - User did NOT use any escape hatch phrase
 
 6. **Plain-language summary**: Compose the final report following the template, allowed/forbidden vocabulary, and examples defined in the `ru-text-quick` skill (preloaded).
 
