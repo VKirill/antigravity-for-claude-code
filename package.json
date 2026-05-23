@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "bun build server.ts --outdir ./dist --target node",
-    "test": "bun test"
+    "test": "bun test",
+    "install-hooks": "node install-hooks.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.1"

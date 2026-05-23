@@ -124,6 +124,13 @@ mkdir -p ~/.gemini/antigravity/skills
 cp -r skills/* ~/.gemini/antigravity/skills/
 ```
 
+### 5. Setup the Guideline Hooks (Recommended)
+To prevent the agent from using shortcuts (e.g., writing `@ts-ignore` or hardcoding HEX colors in Vue/CSS files), install the global validation hooks:
+```bash
+npm run install-hooks
+```
+This script makes the validator executable and registers it in `~/.gemini/antigravity-cli/hooks.json` using the correct absolute path for your machine.
+
 ---
 
 ## Author
