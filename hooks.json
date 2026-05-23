@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/ubuntu/tools/antigravity-for-claude-code/scripts/validate-tool-call.js",
+            "command": "/home/ubuntu/tools/antigravity-for-claude-code/scripts/validate-tool-call.cjs",
             "timeout": 5
           }
         ]
