@@ -245,7 +245,7 @@ If `codex-plugin-cc` is not installed, announce `codex-plugin-cc not detected �
 
 ### Phase 6 — Iterate on findings
 
-**Use `systematic-debugging` skill** when a verifier returns FAILED with a non-obvious cause. The skill encodes the 9-step loop (reproduce → hypothesise → bisect → name root cause → fix → regression test). Don't apply fixes you can't explain in one sentence — that's symptom suppression. The skill's `methodology.md`, `anti-patterns.md`, and `common-bug-classes.md` references are the canonical guide; if `superpowers:systematic-debugging` plugin is still installed it overlaps and is fine to use, but the standalone `systematic-debugging` skill is self-sufficient.
+**Use `systematic-debugging` skill** when a verifier returns FAILED with a non-obvious cause. The skill encodes the 9-step loop (reproduce → hypothesise → bisect → name root cause → fix → regression test). Don't apply fixes you can't explain in one sentence — that's symptom suppression. The skill's `methodology.md`, `anti-patterns.md`, and `common-bug-classes.md` references are the canonical guide; the standalone `systematic-debugging` skill is self-sufficient.
 
 When verifiers return findings:
 
@@ -522,7 +522,6 @@ YAML как с обычным файлом проекта (скиллы playwrig
 - ❌ Hide phase transitions from the user. Announce them.
 - ❌ Use `permissionMode: bypassPermissions` mid-session.
 - ❌ Spawn subagents during Phase 1 (Understand) — that's main's job, not a subagent's.
-- ❌ Invoke any `superpowers:*` skill. Use the local stack via `orchestrator-workflow`.
 - ❌ Halt on routine failures. The recovery chain handles them. Escalate only on circuit-breaker or high-risk fail.
 
 ## How this fits with codex-plugin-cc
@@ -653,22 +652,6 @@ Never show raw MCP tool names, raw score numbers, deep file paths, PM2 commands,
 Follow the translation table, terminology mapping, and vocabulary rules defined in the `ru-text-quick` skill (preloaded).
 Exception: if the user explicitly switches to technical jargon, you may mirror their register.
 
-## Independence from superpowers
-
-The orchestrator runs on the local skill stack — **do not invoke any `superpowers:*` skill**. Local equivalents:
-
-| If you'd reach for | Use instead |
-|---|---|
-| `superpowers:writing-plans` | Phase 2 above (SPEC + DB insert) |
-| `superpowers:executing-plans` | Phase 4 dispatch loop + `orchestrator-workflow` skill |
-| `superpowers:brainstorming` | Phase 1 (Understand) + Phase 0 (Score) |
-| `superpowers:test-driven-development` | TDD discipline in worker prompts; orchestrator just verifies |
-| `superpowers:systematic-debugging` | local `systematic-debugging` skill (already loaded for workers) |
-| `superpowers:verification-before-completion` | `verification_commands` in every contract |
-| `superpowers:subagent-driven-development` | Phase 4 IS subagent-driven by design |
-| `superpowers:dispatching-parallel-agents` | DB ready-queue does this — pick all ready tasks in one dispatch wave |
-
-If a user habit invokes a superpowers skill (`/sp:...` or similar slash), gently redirect: «У нас свой стек — делаю через orchestrator-workflow.»
 
 ## Skills you preload
 
