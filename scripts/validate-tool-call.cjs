@@ -1,12 +1,35 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 // Read stdin
 let inputData = '';
 process.stdin.on('data', chunk => {
   inputData += chunk;
 });
+
+function logAuditEvent(conversationId, toolName, targetFile, decision, reason = '') {
+  try {
+    const configDir = path.join(os.homedir(), '.gemini', 'antigravity-cli');
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
+    const logFile = path.join(configDir, 'hooks-audit.jsonl');
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      conversationId: conversationId || 'unknown',
+      tool: toolName,
+      file: targetFile,
+      decision: decision,
+      reason: reason
+    };
+    fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+  } catch (err) {
+    console.error("Failed to write audit log:", err);
+  }
+}
 
 process.stdin.on('end', () => {
   try {
@@ -17,6 +40,7 @@ process.stdin.on('end', () => {
 
     const context = JSON.parse(inputData);
     const toolCall = context.toolCall;
+    const conversationId = context.conversationId || 'unknown';
 
     if (!toolCall || !toolCall.name) {
       console.log(JSON.stringify({ decision: "allow" }));
@@ -52,6 +76,7 @@ process.stdin.on('end', () => {
       const ignorePattern = /@ts-ignore|@ts-nocheck|@vue-ignore|vue-ignore/i;
       if (ignorePattern.test(mergedContent)) {
         const errorMsg = "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать @ts-ignore, @ts-nocheck или @vue-ignore для скрытия ошибок. Пожалуйста, исправьте типы или код.";
+        logAuditEvent(conversationId, toolName, targetFile, 'block', errorMsg);
         console.error(`[GUIDELINE ERROR] ${errorMsg}`);
         console.log(JSON.stringify({
           decision: "block",
@@ -70,6 +95,7 @@ process.stdin.on('end', () => {
         const hexColorPattern = /#([0-9a-fA-F]{3}){1,2}\b/g;
         if (hexColorPattern.test(mergedContent)) {
           const errorMsg = "ЗАПРЕЩЕНО использовать жестко заданные HEX-цвета (например, #1e1e2f) в компонентах. Используйте дизайн-токены (CSS-переменные проекта).";
+          logAuditEvent(conversationId, toolName, targetFile, 'block', errorMsg);
           console.error(`[GUIDELINE ERROR] ${errorMsg}`);
           console.log(JSON.stringify({
             decision: "block",
@@ -78,6 +104,9 @@ process.stdin.on('end', () => {
           process.exit(1);
         }
       }
+
+      // Log successful checks
+      logAuditEvent(conversationId, toolName, targetFile, 'allow');
     }
 
     // Default decision: allow

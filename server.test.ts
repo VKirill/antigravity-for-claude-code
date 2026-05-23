@@ -8,6 +8,8 @@ let mockFiles: { name: string; mtime: number }[] = [];
 let lastSpawnArgs: string[] = [];
 let lastSpawnStdin = "";
 let mockReaddirShouldThrow = false;
+let mockAuditLogContent = "";
+let mockExistsSyncResult = false;
 
 // Register Mocks for child_process
 mock.module("child_process", () => {
@@ -81,6 +83,15 @@ mock.module("fs", () => {
           getTime: () => matched ? matched.mtime : 0
         }
       };
+    },
+    readFileSync: (filePath: string, encoding: string) => {
+      return mockAuditLogContent;
+    },
+    existsSync: (filePath: string) => {
+      if (filePath.endsWith("hooks-audit.jsonl")) {
+        return mockExistsSyncResult;
+      }
+      return false;
     }
   };
 });
@@ -145,6 +156,8 @@ describe("Antigravity MCP Server Tests", () => {
     lastSpawnArgs = [];
     lastSpawnStdin = "";
     mockReaddirShouldThrow = false;
+    mockAuditLogContent = "";
+    mockExistsSyncResult = false;
     transport.sentMessages = [];
   });
 
@@ -162,7 +175,7 @@ describe("Antigravity MCP Server Tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(1);
     expect(response.result.tools).toBeArray();
-    expect(response.result.tools.length).toBe(6);
+    expect(response.result.tools.length).toBe(7);
 
     const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity");
     expect(discussTool).toBeDefined();
@@ -381,6 +394,37 @@ describe("Antigravity MCP Server Tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain("Fatal API error");
+  });
+
+  test("discuss_with_antigravity - retries on empty response and succeeds", async () => {
+    mockSpawnOutput = { stdout: "", stderr: "", code: 0 };
+    
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: {
+          prompt: "Test retry empty"
+        }
+      },
+      id: 100
+    });
+
+    // Wait for first attempt to run and start the retry timer
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Change spawn output so the second attempt succeeds
+    mockSpawnOutput = { stdout: "Success after retry", stderr: "", code: 0 };
+
+    // Wait for 2 seconds (retry delay) plus margin
+    await new Promise(resolve => setTimeout(resolve, 2100));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(100);
+    expect(response.result.isError).toBeUndefined();
+    expect(response.result.content[0].text).toContain("Success after retry");
   });
 
   test("reset_antigravity_session - clears session ID and sets pending parameters", async () => {
@@ -909,6 +953,160 @@ describe("Antigravity MCP Server Tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain("Failed to initialize debate conversation ID");
+  });
+
+  test("get_debate_receipt - returns receipt for specified debateId including audit logs", async () => {
+    mockSpawnOutput = { stdout: "# Чек дебатов (Debate Receipt)\n\nMocked debate summary.", stderr: "", code: 0 };
+    mockExistsSyncResult = true;
+    mockAuditLogContent = [
+      JSON.stringify({ timestamp: "2026-05-23T06:10:00Z", conversationId: "test-debate-123", tool: "write_to_file", file: "/src/main.ts", decision: "allow" }),
+      JSON.stringify({ timestamp: "2026-05-23T06:11:00Z", conversationId: "test-debate-123", tool: "replace_file_content", file: "/src/App.vue", decision: "block", reason: "Hex colors are prohibited" }),
+      JSON.stringify({ timestamp: "2026-05-23T06:12:00Z", conversationId: "other-debate", tool: "write_to_file", file: "/src/ignored.ts", decision: "allow" })
+    ].join("\n");
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "get_debate_receipt",
+        arguments: {
+          debateId: "test-debate-123"
+        }
+      },
+      id: 58
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(58);
+    expect(response.result.isError).toBeUndefined();
+    
+    const text = response.result.content[0].text;
+    expect(text).toContain("# Чек дебатов (Debate Receipt)");
+    expect(text).toContain("Mocked debate summary.");
+    expect(text).toContain("Hooks Audit");
+    expect(text).toContain("/src/main.ts");
+    expect(text).toContain("replace_file_content");
+    expect(text).toContain("Hex colors are prohibited");
+    expect(text).not.toContain("/src/ignored.ts");
+  });
+
+  test("get_debate_receipt - uses activeConversationId when debateId is omitted", async () => {
+    mockSpawnOutput = { stdout: "Debate summary using activeConversationId.", stderr: "", code: 0 };
+    mockExistsSyncResult = false;
+    
+    // Set active conversation ID in memory
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: {
+          prompt: "Start conversation to set ID",
+          conversationId: "active-session-111"
+        }
+      },
+      id: 59
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+    transport.sentMessages = []; // Clear messages
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "get_debate_receipt",
+        arguments: {}
+      },
+      id: 60
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(60);
+    expect(response.result.isError).toBeUndefined();
+    expect(response.result.content[0].text).toContain("Debate summary using activeConversationId.");
+  });
+
+  test("get_debate_receipt - falls back to newest conversation ID when activeConversationId is null", async () => {
+    resetTestState();
+    mockFiles = [{ name: "newest-session-222.pb", mtime: 1000 }];
+    mockSpawnOutput = { stdout: "Debate summary using newest session.", stderr: "", code: 0 };
+    mockExistsSyncResult = false;
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "get_debate_receipt",
+        arguments: {}
+      },
+      id: 61
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(61);
+    expect(response.result.isError).toBeUndefined();
+    expect(response.result.content[0].text).toContain("Debate summary using newest session.");
+  });
+
+  test("get_debate_receipt - returns error when no session ID can be resolved", async () => {
+    resetTestState();
+    mockFiles = [];
+    mockExistsSyncResult = false;
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "get_debate_receipt",
+        arguments: {}
+      },
+      id: 62
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(62);
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("не найдено активной сессии дебатов");
+  });
+
+  test("get_debate_receipt - handles runAgy failure gracefully", async () => {
+    mockSpawnOutput = { stdout: "", stderr: "Timeout or process crash", code: 1 };
+    mockExistsSyncResult = true;
+    mockAuditLogContent = JSON.stringify({ timestamp: "2026-05-23T06:10:00Z", conversationId: "crash-session-999", tool: "write_to_file", file: "/src/main.ts", decision: "allow" });
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "get_debate_receipt",
+        arguments: {
+          debateId: "crash-session-999"
+        }
+      },
+      id: 63
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(63);
+    expect(response.result.isError).toBeUndefined(); // Returns partial report instead of total failure
+    expect(response.result.content[0].text).toContain("Не удалось автоматически проанализировать сессию с помощью AI");
+    expect(response.result.content[0].text).toContain("/src/main.ts");
   });
 
   test("startServer connects to mocked StdioServerTransport", async () => {

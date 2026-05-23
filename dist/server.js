@@ -14067,8 +14067,9 @@ class StdioServerTransport {
 
 // server.ts
 import { spawn } from "child_process";
-import { readdirSync, statSync } from "fs";
+import { readdirSync, statSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
+import os from "os";
 var activeConversationId = null;
 var pendingSystemPrompt = null;
 var pendingRole = null;
@@ -14228,6 +14229,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["question"]
+        }
+      },
+      {
+        name: "get_debate_receipt",
+        description: "Generates a structured Debate Receipt (Markdown report) containing role claims, evidence, rejected alternatives, touched files, and security hooks audit data for a given debate session ID.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            debateId: {
+              type: "string",
+              description: "The unique ID of the debate session to generate a receipt for. If not provided, uses the last active session in memory."
+            }
+          }
         }
       }
     ]
@@ -14751,6 +14765,121 @@ ${question}`;
         isError: true
       };
     }
+  }
+  if (name === "get_debate_receipt") {
+    const targetDebateId = args?.debateId ? String(args.debateId) : activeConversationId || getNewestConversationId();
+    if (!targetDebateId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Ошибка: не найдено активной сессии дебатов. Пожалуйста, укажите debateId."
+          }
+        ],
+        isError: true
+      };
+    }
+    const homeDir = process.env.HOME || os.homedir();
+    const auditLogPath = join(homeDir, ".gemini/antigravity-cli/hooks-audit.jsonl");
+    const touchedFiles = [];
+    if (existsSync(auditLogPath)) {
+      try {
+        const content = readFileSync(auditLogPath, "utf-8");
+        const lines = content.split(`
+`);
+        for (const line of lines) {
+          if (!line.trim())
+            continue;
+          try {
+            const entry = JSON.parse(line);
+            if (entry.conversationId === targetDebateId) {
+              touchedFiles.push(entry);
+            }
+          } catch (e) {}
+        }
+      } catch (err) {}
+    }
+    const allowedChanges = touchedFiles.filter((f) => f.decision === "allow");
+    const blockedAttempts = touchedFiles.filter((f) => f.decision === "block");
+    const receiptPrompt = `Пожалуйста, проанализируй историю текущей сессии дебатов и сформируй структурированный отчет на русском языке.
+
+Отчет должен содержать следующие разделы:
+1. **Тема обсуждения** (краткое резюме обсуждаемой проблемы).
+2. **Сводная таблица участников**: для каждой роли/персоны (например, Оптимист, Скептик, Соглашатель, Хейтер), которая принимала участие:
+   - Участник (Роль)
+   - Основной тезис (Claim)
+   - Аргументы и доказательства (Evidence)
+3. **Отвергнутые альтернативы**: перечень вариантов решений или идей, которые были предложены другими участниками дебатов, но отвергнуты (с указанием причин).
+4. **Итоговое принятое решение**: компромиссы, итоговая архитектура или соглашения, к которым пришли участники.
+
+Отвечай строго на русском языке в формате Markdown. Начни сразу с заголовка "# Чек дебатов (Debate Receipt)" и не пиши никаких вводных слов от себя.`;
+    let responseText = "";
+    try {
+      responseText = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", targetDebateId], receiptPrompt);
+    } catch (err) {
+      responseText = `# Чек дебатов (Сессия: ${targetDebateId})
+
+Не удалось автоматически проанализировать сессию с помощью AI: ${err.message}.`;
+    }
+    let auditMarkdown = `
+
+## Аудит безопасности и изменений (Hooks Audit)
+
+`;
+    if (allowedChanges.length > 0) {
+      auditMarkdown += `### Успешные изменения файлов
+
+`;
+      auditMarkdown += `| Файл | Инструмент | Статус | Время |
+`;
+      auditMarkdown += `| :--- | :--- | :--- | :--- |
+`;
+      for (const item of allowedChanges) {
+        auditMarkdown += `| \`${item.file}\` | \`${item.tool}\` | ✅ Разрешено | ${item.timestamp} |
+`;
+      }
+      auditMarkdown += `
+`;
+    } else {
+      auditMarkdown += `*Изменений файлов в рамках этой сессии зафиксировано не было.*
+
+`;
+    }
+    if (blockedAttempts.length > 0) {
+      auditMarkdown += `### Заблокированные нарушения правил
+
+`;
+      for (const item of blockedAttempts) {
+        auditMarkdown += `> [!WARNING]
+`;
+        auditMarkdown += `> **Попытка нарушения правил кодирования заблокирована хуком безопасности**
+`;
+        auditMarkdown += `> - **Файл**: \`${item.file}\`
+`;
+        auditMarkdown += `> - **Инструмент**: \`${item.tool}\`
+`;
+        auditMarkdown += `> - **Причина блокировки**: ${item.reason || "Не указана"}
+`;
+        auditMarkdown += `> - **Время**: ${item.timestamp}
+
+`;
+      }
+    } else {
+      auditMarkdown += `> [!NOTE]
+`;
+      auditMarkdown += `> Попыток нарушения правил кодирования (использование \`@ts-ignore\` или жестко заданных цветов) в этой сессии не зафиксировано.
+
+`;
+    }
+    const finalReport = `${responseText.trim()}${auditMarkdown}`;
+    return {
+      content: [
+        {
+          type: "text",
+          text: finalReport
+        }
+      ]
+    };
   }
   throw new Error(`Unknown tool: ${name}`);
 });

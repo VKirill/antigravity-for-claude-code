@@ -79,6 +79,7 @@ The server exposes the following tools:
 * `run_interactive_debate` — Runs an interactive multi-turn debate session where you act as a Judge/Architect, guiding AI personas (Optimist, Skeptic, Agreer, Hater) with comments, culminating in a structured ADR.
 * `review_code_changes` — Conducts a code review of a git diff or snippet on Russian language (bugs, security, clean code).
 * `get_programming_advice` — Fast, focused architectural or coding advice for a specific problem.
+* `get_debate_receipt` — Generates a structured Debate Receipt (Markdown report) containing role claims, evidence, rejected alternatives, touched files, and security hooks audit data for a given debate session ID.
 
 ---
 
