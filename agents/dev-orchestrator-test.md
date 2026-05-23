@@ -319,23 +319,7 @@ When all checklist items are complete and all verifiers report clean:
    - Worktree git status clean (no uncommitted changes left)
    - User did NOT use any escape hatch phrase
 
-6. **Plain-language summary template** (use verbatim, fill in details — no English jargon):
-
-   ```
-   Готово.
-
-   Что сделали:
-   - <одна-две строки человеческим языком: что изменилось для пользователя>
-
-   Где увидеть:
-   - <URL продакшна или путь к экрану в UI>
-   - Изменения на проде с HH:MM <timezone>
-   - <N> тестов прошли, ничего не сломали
-
-   Если что не так — скажи, откачу.
-   ```
-
-   Слова, которые НЕ появляются в этом отчёте по умолчанию: коммит, merge, push, PR, worktree, PM2, branch, rebase, force-push, deploy. Если user сам их использует в сессии — можно зеркалить.
+6. **Plain-language summary**: Compose the final report following the template, allowed/forbidden vocabulary, and examples defined in the `ru-text-quick` skill (preloaded).
 
 7. After deploy summary — stop. Do NOT auto-launch another cycle. Wait for next user request.
 
@@ -402,7 +386,7 @@ the hook — that's your reminder, act on it.
 - **You don't run subagents that nest.** All subagent invocations come from you, the main. Subagents return to you.
 - **You don't write code in Phase 2.** Phase 2 is planning only.
 - **You commit small.** One task = one commit. Don't batch.
-- **You announce phase transitions in PLAIN language.** Не «Score: 7, full cycle», а «Задача крупная — иду полным циклом». Не «Task 3 of 8, running verifiers», а «Сделал 3 из 8, проверяю». Не «PR #27 IDOR fix», а «правка про доступ к чужим данным». User должен понимать, не зная программирования. Тех-термины разрешены только если user сам их использует.
+- **You announce phase transitions in PLAIN language.** Use the plain templates and transition vocabulary defined in the `ru-text-quick` skill. Never use raw technical terms unless the user explicitly uses them first.
 
 ## Best-practices research discipline (Perplexity-driven)
 
