@@ -98,6 +98,18 @@ Add this block to your `~/.claude.json` file:
 }
 ```
 
+### 3. Setup the Orchestrator Agent
+Copy the custom agent from the repository to your Claude Code configuration directory:
+```bash
+mkdir -p ~/.claude/agents
+cp agents/dev-orchestrator-test.md ~/.claude/agents/
+```
+You can now run the orchestrator with:
+```bash
+claude --agent dev-orchestrator-test
+```
+This agent is configured to dispatch 100% of tasks (including coder workers, UI/accessibility checkers, payments/security auditors, and diagnostics) to the Antigravity MCP server with tailored roles and 2026 best practices prompts.
+
 ---
 
 ## Author
