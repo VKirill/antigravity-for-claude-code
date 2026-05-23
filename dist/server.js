@@ -14282,7 +14282,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   if (name === "discuss_with_antigravity") {
     const prompt = String(args?.prompt || "");
-    let conversationIdToUse = args?.conversationId ? String(args.conversationId) : activeConversationId;
+    let conversationIdToUse = args?.conversationId ? String(args.conversationId) : null;
+    if (!conversationIdToUse) {
+      const taskMatch = prompt.match(/(?:^|\n)(?:id|task|task_id):\s*(TASK-\d+)/i) || prompt.match(/(?:id|task|task_id):\s*(TASK-\d+)/i);
+      if (taskMatch) {
+        conversationIdToUse = taskMatch[1];
+      }
+    }
+    if (!conversationIdToUse) {
+      conversationIdToUse = activeConversationId;
+    }
     let promptToSend = prompt;
     if (!conversationIdToUse) {
       const selectedRole = args?.role ? String(args.role) : pendingRole;
@@ -14313,10 +14322,10 @@ ${prompt}`;
     }
     try {
       const responseText = await runAgy(cmdArgs, promptToSend);
-      if (!conversationIdToUse) {
-        activeConversationId = getNewestConversationId();
-      } else if (args?.conversationId) {
+      if (conversationIdToUse) {
         activeConversationId = conversationIdToUse;
+      } else {
+        activeConversationId = getNewestConversationId();
       }
       const currentId = activeConversationId || "unknown";
       return {

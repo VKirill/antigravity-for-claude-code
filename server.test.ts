@@ -273,6 +273,29 @@ describe("Antigravity MCP Server Tests", () => {
     expect(response.result.content[0].text).toContain("<!-- active_session_id: custom-id-789 -->");
   });
 
+  test("discuss_with_antigravity - auto-detects task ID from prompt", async () => {
+    mockSpawnOutput = { stdout: "Task response complete.", stderr: "", code: 0 };
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: {
+          prompt: "id: TASK-456\nscope: Fix issues"
+        }
+      },
+      id: 60
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(lastSpawnArgs).toContain("--conversation");
+    expect(lastSpawnArgs).toContain("TASK-456");
+
+    const response: any = transport.sentMessages[0];
+    expect(response.result.content[0].text).toContain("<!-- active_session_id: TASK-456 -->");
+  });
+
   test("discuss_with_antigravity - prepends system prompt for preset roles", async () => {
     mockFiles = [{ name: "session-role.pb", mtime: 1000 }];
     mockSpawnOutput = { stdout: "Designer response", stderr: "", code: 0 };

@@ -73,7 +73,7 @@ These files guide Gemini to act as a professional coder, architect, or designer:
 ## MCP Tools Provided
 
 The server exposes the following tools:
-* `discuss_with_antigravity` — Engage in a multi-turn deliberative debate or discussion session with Antigravity.
+* `discuss_with_antigravity` — Engage in a multi-turn deliberative debate or discussion session with Antigravity. Automatically parses task ID (e.g., `id: TASK-NNN`) from the prompt to maintain task-scoped conversation persistence.
 * `reset_antigravity_session` — Clear active discussion session history in memory.
 * `run_debate_deliberation` — Runs a multi-turn autonomous debate between specialized AI personas (Optimist, Skeptic, Devil's Advocate) ending with an ADR.
 * `run_interactive_debate` — Runs an interactive multi-turn debate session where you act as a Judge/Architect, guiding AI personas (Optimist, Skeptic, Agreer, Hater) with comments, culminating in a structured ADR.

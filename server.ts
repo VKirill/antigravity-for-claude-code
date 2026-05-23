@@ -248,7 +248,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   if (name === "discuss_with_antigravity") {
     const prompt = String(args?.prompt || "");
-    let conversationIdToUse = args?.conversationId ? String(args.conversationId) : activeConversationId;
+    
+    // Auto-detect task ID from the prompt content if conversationId is not explicitly specified
+    let conversationIdToUse = args?.conversationId ? String(args.conversationId) : null;
+    
+    if (!conversationIdToUse) {
+      const taskMatch = prompt.match(/(?:^|\n)(?:id|task|task_id):\s*(TASK-\d+)/i) || prompt.match(/(?:id|task|task_id):\s*(TASK-\d+)/i);
+      if (taskMatch) {
+        conversationIdToUse = taskMatch[1];
+      }
+    }
+    
+    // Fallback to activeConversationId from memory if still not resolved
+    if (!conversationIdToUse) {
+      conversationIdToUse = activeConversationId;
+    }
 
     let promptToSend = prompt;
 
@@ -288,10 +302,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const responseText = await runAgy(cmdArgs, promptToSend);
       
       // If we didn't have an ID, grab the newly created one and store it
-      if (!conversationIdToUse) {
+      if (conversationIdToUse) {
+        activeConversationId = conversationIdToUse;
+      } else {
         activeConversationId = getNewestConversationId();
-      } else if (args?.conversationId) {
-        activeConversationId = conversationIdToUse; // update active ID if explicitly switched
       }
 
       const currentId = activeConversationId || "unknown";
