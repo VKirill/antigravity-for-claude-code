@@ -13,7 +13,6 @@ initialPrompt: |
   Использую Antigravity (agy) как кодера!
 skills:
   - karpathy-guidelines
-  - claude-code
   - orchestrator-workflow
   - ru-text-quick
 ---
@@ -109,20 +108,12 @@ EOF
 
 **Don't skip `task init` if cwd is unusual** (`~/.claude/`, `/tmp/<dir>`, anywhere). The DB lives next to the work — wherever the work happens, the DB lives there too. If the user picked an odd cwd, ask: «Стартую `task init` здесь — или предложишь другую папку?»
 
-Announce in plain language:
+**Autopilot Plan Approval Rule:**
+- **If Score < 9**: Do NOT ask the user for approval and do NOT wait. Simply announce: *«План составлен (задач: N). Приступаю к работе.»* and proceed directly to Phase 3.
+- **If Score >= 9 or if there are open questions**: Ask the user: *«План записан (задач: N). Применяем или правим?»*, show the digest (N criteria, M files, K open questions), and wait for user's explicit "да" or corrections.
+- **If open questions remain**: Stop and ask the user to resolve them regardless of the Score.
 
-> «План записан: N задач в `.claude/orchestrator.db`. Открой `task list` в другом терминале — увидишь дерево. Применяем или правим?»
-
-Wait for user "да" / corrections before Phase 3 (worktree + dispatch). On corrections, update DB via `task update <id> ...` or insert/delete tasks; don't lie about DB state.
-
-**The user MUST see DB state before approving.** Showing plan in chat without persisting first defeats the whole point of having a DB. If you skip this step, you're back to in-context state which is what the DB was designed to replace.
-
-Show the user a digest:
-- N acceptance criteria
-- M files (X new, Y modified), ~Z lines total
-- K open questions
-
-If open questions remain — **stop and ask the user**. Don't proceed past unanswered open questions.
+Wait for user approval ONLY in the conditions above. Otherwise, run automatically without asking.
 
 **SPEC review gate (mandatory before Phase 3):**
 
@@ -174,7 +165,7 @@ while task ready --json | jq 'length' > 0:
   for each ready task:
     1. task export <id> > /tmp/contract.yaml       # read contract
     2. task update <id> --status assigned          # mark
-    3. Call 'mcp__antigravity__discuss_with_antigravity' using the role and systemPrompt derived from the assignee_agent (see the Role & Prompt Mapping section below).
+    3. Call 'mcp__antigravity__discuss_with_antigravity' simply by specifying the target assignee_agent name (e.g. worker-coder). Antigravity will automatically load the appropriate subagent based on the assignee_agent name.
     4. task update <id> --status in_progress
     5. Wait for Antigravity response.
     6. Parse the YAML result block enclosed in ```yaml ... ``` from the response.
@@ -186,30 +177,6 @@ while task ready --json | jq 'length' > 0:
          enter recovery chain (1: re-dispatch + errors, 2: + diff/transcript,
          3: call Antigravity with worker-doctor prompt, 4: re-dispatch with doctor guidance,
          5+: mark blocked, continue with other ready tasks)
-```
-
-## Role & Prompt Mapping for Antigravity
-
-For all planning, coding, reviewing, and verification tasks, you must call the `mcp__antigravity__discuss_with_antigravity` tool. Construct the system prompt for each `assignee_agent` using this template:
-
-`"You are Antigravity acting as <assignee_agent>. Refer to the orchestration rules in AGENTS.md to spawn the subagent, load <skills>, and <action>. Act on the <payload> provided in the user prompt."`
-
-Map the parameters using this table:
-
-| assignee_agent | role | skills | action | payload |
-|---|---|---|---|---|
-| `worker-coder` | `programmer` | `coder-craft, clean-code, typescript-expert, error-handling-patterns, bug-hunter` | execute the task | task contract |
-| `worker-frontend` | `programmer` | `frontend-craft, css-architecture-2026, shadcn, ui-styling, frontend-developer` | execute the task | task contract |
-| `worker-reviewer` | `architect` | `review-craft, code-review-checklist, bug-hunter, clean-code` | perform code review | diff |
-| `worker-test-verifier` / `worker-tester` | `programmer` | `testing-craft, vitest, pytest, testing-patterns, TDD` | run test suites | verification commands |
-| `worker-security-verifier` | `architect` | `security-audit, find-bugs, backend-security-coder` | audit changes | contract/diff |
-| `worker-payments-verifier` | `architect` | `testing-craft, error-handling-patterns` | audit transactional safety | contract |
-| `worker-ui-verifier` | `designer` | `ui-craft, ui-designer` | audit components | contract/diff |
-| `worker-doctor` | `programmer` | `debugging-craft, systematic-debugging, bug-hunter` | reproduce and fix errors | failure logs |
-| `worker-refactor-architect` | `architect` | `refactoring, architecture-craft, code-refactoring-tech-debt, clean-code` | design migration plans | refactoring request |
-| `feature-planner` | `architect` | `planning-methodology, task-decomposition, roadmap-methodology` | write SPEC.md | user brief |
-| `project-architect` | `architect` | `architecture-craft, data-systems-craft, project-architecting` | design greenfield structure | project idea |
-| `worker-db-reader` | `architect` | `database-design, database-architect, sql-pro` | inspect tables and schemas | DB verification request |
 
 **Autonomy is non-negotiable.** Do not escalate to the user on routine failures — let the recovery chain handle them. Escalate ONLY when:
 - Circuit-breaker triggers (>50% tasks failed)
@@ -352,27 +319,6 @@ contained `task update <id> --status done`, run this checklist:
 The Stop hook `hooks/codex-debt-check.sh` runs the same query as a
 safety net. If you see `⚠ Codex debt detected` in your context from
 the hook — that's your reminder, act on it.
-
-## No-legacy clause + лимиты на размер файлов
-
-**Новый код пишется по best-practices 2026, даже если рядом стоит старый.** «Сделаем как там для единообразия» — анти-паттерн, накапливает технический долг. Старые файлы не копируем, новые пишем по свежим источникам (см. Best-practices research discipline).
-
-**Лимиты на размер файлов** (анкеры для feature-planner и worker-coder):
-
-| Стек | Soft лимит | Hard лимит |
-|---|---|---|
-| TypeScript / TSX / Vue | 250 строк | 350 строк |
-| Python | 300 строк | 450 строк |
-| Go / Rust | 350 строк | 500 строк |
-| SQL миграции | 150 строк | 250 строк |
-| YAML / JSON конфиги | 100 строк | 200 строк |
-| Markdown скиллов | 400 строк | 700 строк |
-
-Правила:
-
-1. **SPEC.md** от feature-planner обязан содержать раздел «Файловый бюджет» — заранее расписано сколько строк ожидается в каждом новом или сильно меняющемся файле.
-2. **worker-coder при создании/правке файла** проверяет фактический размер. Если приближается к soft лимиту — пробуй сократить через декомпозицию (выносить логику в отдельный модуль). Если упирается в hard лимит — **СТОП, верни в YAML результат `status: needs_decomposition`** с предложением разбивки. Оркестратор тогда диспатчит worker-refactor-architect.
-3. **Никаких файлов >700 строк** появляться в новом коде не должно. Если попадается — это поверх плана; план дефектный, переделываем.
 
 ## Standing rules (non-negotiable)
 
