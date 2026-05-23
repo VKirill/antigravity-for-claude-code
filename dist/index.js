@@ -14111,8 +14111,7 @@ function runAgy(args, prompt, maxRetries = 2) {
       const timeoutId = setTimeout(() => {
         isTimedOut = true;
         child.kill("SIGKILL");
-        reject(new Error("Process timed out after 3 minutes"));
-      }, 180000);
+      }, 90000);
       child.stdin.write(prompt);
       child.stdin.end();
       child.stdout.on("data", (data) => {
@@ -14133,7 +14132,8 @@ function runAgy(args, prompt, maxRetries = 2) {
             resolve(trimmedOutput);
           }
         } else {
-          const err = new Error(`agy process exited with code ${code}. Stderr: ${stderr.trim()}`);
+          const errMessage = isTimedOut ? "Process timed out after 90 seconds" : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
+          const err = new Error(errMessage);
           if (isTimedOut) {
             err.retryable = true;
           } else {
@@ -14265,18 +14265,197 @@ async function handleResetAntigravitySession(args) {
 }
 
 // src/tools/debate.ts
+import { writeFileSync } from "fs";
+
+// src/tools/receipt.ts
+import { readFileSync, existsSync } from "fs";
+import { join as join2 } from "path";
+import os from "os";
+async function handleGetDebateReceipt(args) {
+  const targetDebateId = args?.debateId ? String(args.debateId) : sessionState.activeConversationId || getNewestConversationId();
+  if (!targetDebateId) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: "Ошибка: не найдено активной сессии дебатов. Пожалуйста, укажите debateId."
+        }
+      ],
+      isError: true
+    };
+  }
+  const homeDir = process.env.HOME || os.homedir();
+  const auditLogPath = join2(homeDir, ".gemini/antigravity-cli/hooks-audit.jsonl");
+  const touchedFiles = [];
+  if (existsSync(auditLogPath)) {
+    try {
+      const content = readFileSync(auditLogPath, "utf-8");
+      const lines = content.split(`
+`);
+      for (const line of lines) {
+        if (!line.trim())
+          continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.conversationId === targetDebateId) {
+            touchedFiles.push(entry);
+          }
+        } catch (e) {}
+      }
+    } catch (err) {}
+  }
+  const allowedChanges = touchedFiles.filter((f) => f.decision === "allow");
+  const blockedAttempts = touchedFiles.filter((f) => f.decision === "block");
+  const receiptPrompt = `Пожалуйста, проанализируй историю текущей сессии дебатов и сформируй структурированный отчет на русском языке.
+
+Отчет должен содержать следующие разделы:
+1. **Тема обсуждения** (краткое резюме обсуждаемой проблемы).
+2. **Сводная таблица участников**: для каждой роли/персоны (например, Оптимист, Скептик, Соглашатель, Хейтер), которая принимала участие:
+   - Участник (Роль)
+   - Основной тезис (Claim)
+   - Аргументы и доказательства (Evidence)
+3. **Отвергнутые альтернативы**: перечень вариантов решений или идей, которые были предложены другими участниками дебатов, но отвергнуты (с указанием причин).
+4. **Итоговое принятое решение**: компромиссы, итоговая архитектура или соглашения, к которым пришли участники.
+
+Отвечай строго на русском языке в формате Markdown. Начни сразу с заголовка "# Чек дебатов (Debate Receipt)" и не пиши никаких вводных слов от себя.`;
+  let responseText = "";
+  try {
+    responseText = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", targetDebateId], receiptPrompt);
+  } catch (err) {
+    responseText = `# Чек дебатов (Сессия: ${targetDebateId})
+
+Не удалось автоматически проанализировать сессию с помощью AI: ${err.message}.`;
+  }
+  let auditMarkdown = `
+
+## Аудит безопасности и изменений (Hooks Audit)
+
+`;
+  if (allowedChanges.length > 0) {
+    auditMarkdown += `### Успешные изменения файлов
+
+`;
+    auditMarkdown += `| Файл | Инструмент | Статус | Время |
+`;
+    auditMarkdown += `| :--- | :--- | :--- | :--- |
+`;
+    for (const item of allowedChanges) {
+      auditMarkdown += `| \`${item.file}\` | \`${item.tool}\` | ✅ Разрешено | ${item.timestamp} |
+`;
+    }
+    auditMarkdown += `
+`;
+  } else {
+    auditMarkdown += `*Изменений файлов в рамках этой сессии зафиксировано не было.*
+
+`;
+  }
+  if (blockedAttempts.length > 0) {
+    auditMarkdown += `### Заблокированные нарушения правил
+
+`;
+    for (const item of blockedAttempts) {
+      auditMarkdown += `> [!WARNING]
+`;
+      auditMarkdown += `> **Попытка нарушения правил кодирования заблокирована хуком безопасности**
+`;
+      auditMarkdown += `> - **Файл**: \`${item.file}\`
+`;
+      auditMarkdown += `> - **Инструмент**: \`${item.tool}\`
+`;
+      auditMarkdown += `> - **Причина блокировки**: ${item.reason || "Не указана"}
+`;
+      auditMarkdown += `> - **Время**: ${item.timestamp}
+
+`;
+    }
+  } else {
+    auditMarkdown += `> [!NOTE]
+`;
+    auditMarkdown += `> Попыток нарушения правил кодирования (использование \`@ts-ignore\` или жестко заданных цветов) в этой сессии не зафиксировано.
+
+`;
+  }
+  const finalReport = `${responseText.trim()}${auditMarkdown}`;
+  return {
+    content: [
+      {
+        type: "text",
+        text: finalReport
+      }
+    ]
+  };
+}
+
+// src/tools/debate.ts
+var DEBATE_PROMPTS = {
+  ru: {
+    optimist: (topic) => `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]
+
+Тема для дебатов: ${topic}
+
+Предложи начальную архитектуру или техническое решение.`,
+    skeptic: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]
+
+Изучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`,
+    agreer: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]
+
+Изучи предложение Оптимиста и замечания Скептика. Поддержи Оптимиста, похвали простоту, предложи срезать углы ради быстрой разработки и обойтись без сложных проверок.`,
+    hater: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]
+
+Изучи ход дебатов. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`,
+    optimist_defend: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]
+
+Изучи все замечания (критику Скептика, предложения Соглашателя и хейт Пессимиста). Защити проект и предложи доработанное сбалансированное решение, отвечающее на все выпады.`,
+    skeptic_review: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]
+
+Изучи доработанное предложение Оптимиста. Напиши краткую рецензию: остались ли логические нестыковки? Решены ли каверзные вопросы?`,
+    hater_persist: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]
+
+Изучи доработанное предложение Оптимиста. Все еще ли проект обречен на провал? Найди новые причины для токсичного пессимизма.`,
+    synthesizer: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]
+
+Изучи весь ход дебатов. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение, компромиссы (trade-offs) и список рисков с их минимизацией.`
+  },
+  en: {
+    optimist: (topic) => `[SYSTEM PROMPT FOR ROLE: You are the Optimist (Engineer-Developer). Your goal is to propose creative and robust technical solutions. Your tone: enthusiastic developer ready to build.]
+
+Debate topic: ${topic}
+
+Propose an initial architecture or technical solution in English.`,
+    skeptic: `[SYSTEM PROMPT FOR ROLE: You are the Skeptic (Logic Critic). Your goal is to find weaknesses in the proposal, question logic, ask challenging questions, and point out redundant complexity. Your tone: constructive critic.]
+
+Analyze the Optimist's initial proposal. Ask tough questions and point out logical inconsistencies in English.`,
+    agreer: `[SYSTEM PROMPT FOR ROLE: You are the Agreer. Your goal is to agree with the Optimist, praise the simplicity of the solution, suggest cutting corners for speed of development, and ignore complex validations. Your tone: friendly, pleasing, seeking easy paths.]
+
+Study the Optimist's proposal and the Skeptic's feedback. Support the Optimist, praise the simplicity, and suggest cutting corners to ship faster without complex checks in English.`,
+    hater: `[SYSTEM PROMPT FOR ROLE: You are the Hater (Toxic Pessimist). Your goal is to express strong doubts and argue that the project is doomed to fail. Bring up real-world failures and toxic skepticism. Your tone: sarcastic, cynical.]
+
+Analyze the debate. Speak out strongly against this initiative: explain why the project will fail, give examples of real-world failures of similar systems, add cynical doubts, and claim it will crash in English.`,
+    optimist_defend: `[SYSTEM PROMPT FOR ROLE: You are the Optimist.]
+
+Study all comments (Skeptic's critique, Agreer's proposals, and Hater's skepticism). Defend the project and propose a refined, balanced solution addressing all concerns in English.`,
+    skeptic_review: `[SYSTEM PROMPT FOR ROLE: You are the Skeptic.]
+
+Study the refined proposal from the Optimist. Write a brief review in English: are there still logical inconsistencies? Have the tough questions been answered?`,
+    hater_persist: `[SYSTEM PROMPT FOR ROLE: You are the Hater.]
+
+Study the refined proposal from the Optimist. Is the project still doomed to fail? Find new reasons for toxic pessimism in English.`,
+    synthesizer: `[SYSTEM PROMPT FOR ROLE: You are the Synthesizer (Lead Architect). Your goal is to weigh all opinions, find compromises, and write a final Architecture Decision Record (ADR) in English. Your tone: authoritative, balanced, constructive.]
+
+Analyze the entire debate history. Write the final structured Architecture Decision Record (ADR) in English. It must include: topic, context, final decision, trade-offs, and risk mitigation list.`
+  }
+};
 async function handleRunDebateDeliberation(args) {
   const topic = String(args?.topic || "");
   const roundsInput = args?.rounds ? Number(args.rounds) : 5;
   const rounds = Math.max(3, Math.min(10, roundsInput));
+  const lang = args?.language === "en" || args?.language === "english" ? "en" : "ru";
   const transcript = [];
   let debateConversationId = null;
+  const prompts = DEBATE_PROMPTS[lang];
   try {
-    const r1Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]
-
-Тема для дебатов: ${topic}
-
-Предложи начальную архитектуру или техническое решение.`;
+    const r1Prompt = prompts.optimist(topic);
     const r1Output = await runAgy(["--dangerously-skip-permissions", "--print", "--continue=false"], r1Prompt);
     debateConversationId = getNewestConversationId();
     if (!debateConversationId) {
@@ -14288,63 +14467,52 @@ async function handleRunDebateDeliberation(args) {
       let instructions = "";
       if (r === 2) {
         currentPersona = "skeptic";
-        instructions = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]
-
-Изучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`;
+        instructions = prompts.skeptic;
       } else if (r === 3) {
         currentPersona = "agreer";
-        instructions = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]
-
-Изучи предложение Оптимиста и замечания Скептика. Поддержи Оптимиста, похвали простоту, предложи срезать углы ради быстрой разработки и обойтись без сложных проверок.`;
+        instructions = prompts.agreer;
       } else if (r === 4) {
         currentPersona = "hater";
-        instructions = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]
-
-Изучи ход дебатов. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`;
+        instructions = prompts.hater;
       } else {
         if (r % 2 === 1) {
           currentPersona = "optimist";
-          instructions = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]
-
-Изучи все замечания (критику Скептика, предложения Соглашателя и хейт Пессимиста). Защити проект и предложи доработанное сбалансированное решение, отвечающее на все выпады.`;
+          instructions = prompts.optimist_defend;
         } else {
           if (r % 4 === 0) {
             currentPersona = "skeptic";
-            instructions = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]
-
-Изучи доработанное предложение Оптимиста. Напиши краткую рецензию: остались ли логические нестыковки? Решены ли каверзные вопросы?`;
+            instructions = prompts.skeptic_review;
           } else {
             currentPersona = "hater";
-            instructions = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]
-
-Изучи доработанное предложение Оптимиста. Все еще ли проект обречен на провал? Найди новые причины для токсичного пессимизма.`;
+            instructions = prompts.hater_persist;
           }
         }
       }
       const reply = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId], instructions);
       transcript.push({ persona: currentPersona, text: reply });
     }
-    const finalPrompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]
-
-Изучи весь ход дебатов. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение, компромиссы (trade-offs) и список рисков с их минимизацией.`;
+    const finalPrompt = prompts.synthesizer;
     const synthesisOutput = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId], finalPrompt);
     transcript.push({ persona: "synthesizer", text: synthesisOutput });
-    let outputMarkdown = `# Результаты дебатов: ${topic}
+    const title = lang === "en" ? `Debate Results: ${topic}` : `Результаты дебатов: ${topic}`;
+    const transcriptTitle = lang === "en" ? "Debate Transcript" : "Стенограмма дебатов (Transcript)";
+    const showDetailsText = lang === "en" ? `View discussion flow (${rounds} rounds)` : `Посмотреть ход обсуждения (${rounds} раундов)`;
+    let outputMarkdown = `# ${title}
 
 `;
     outputMarkdown += `${synthesisOutput}
 
 `;
-    outputMarkdown += `## Стенограмма дебатов (Transcript)
+    outputMarkdown += `## ${transcriptTitle}
 `;
     outputMarkdown += `<details>
-<summary>Посмотреть ход обсуждения (${rounds} раундов)</summary>
+<summary>${showDetailsText}</summary>
 
 `;
     for (let i = 0;i < transcript.length; i++) {
       const entry = transcript[i];
       const roleName = entry.persona.toUpperCase();
-      outputMarkdown += `### Раунд ${i + 1}: [${roleName}]
+      outputMarkdown += `### Round ${i + 1}: [${roleName}]
 ${entry.text}
 
 ---
@@ -14355,6 +14523,18 @@ ${entry.text}
 
 <!-- active_session_id: ${debateConversationId} -->`;
     sessionState.activeConversationId = debateConversationId;
+    try {
+      const projectCwd = process.env.PWD || process.cwd();
+      const deliberationPath = `${projectCwd}/debate-deliberation.md`;
+      const receiptPath = `${projectCwd}/debate-receipt.md`;
+      writeFileSync(deliberationPath, outputMarkdown);
+      if (debateConversationId) {
+        const receiptResult = await handleGetDebateReceipt({ debateId: debateConversationId });
+        if (!receiptResult.isError && receiptResult.content && receiptResult.content[0]) {
+          writeFileSync(receiptPath, receiptResult.content[0].text);
+        }
+      }
+    } catch (e) {}
     return {
       content: [
         {
@@ -14615,126 +14795,6 @@ ${question}`;
   }
 }
 
-// src/tools/receipt.ts
-import { readFileSync, existsSync } from "fs";
-import { join as join2 } from "path";
-import os from "os";
-async function handleGetDebateReceipt(args) {
-  const targetDebateId = args?.debateId ? String(args.debateId) : sessionState.activeConversationId || getNewestConversationId();
-  if (!targetDebateId) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: "Ошибка: не найдено активной сессии дебатов. Пожалуйста, укажите debateId."
-        }
-      ],
-      isError: true
-    };
-  }
-  const homeDir = process.env.HOME || os.homedir();
-  const auditLogPath = join2(homeDir, ".gemini/antigravity-cli/hooks-audit.jsonl");
-  const touchedFiles = [];
-  if (existsSync(auditLogPath)) {
-    try {
-      const content = readFileSync(auditLogPath, "utf-8");
-      const lines = content.split(`
-`);
-      for (const line of lines) {
-        if (!line.trim())
-          continue;
-        try {
-          const entry = JSON.parse(line);
-          if (entry.conversationId === targetDebateId) {
-            touchedFiles.push(entry);
-          }
-        } catch (e) {}
-      }
-    } catch (err) {}
-  }
-  const allowedChanges = touchedFiles.filter((f) => f.decision === "allow");
-  const blockedAttempts = touchedFiles.filter((f) => f.decision === "block");
-  const receiptPrompt = `Пожалуйста, проанализируй историю текущей сессии дебатов и сформируй структурированный отчет на русском языке.
-
-Отчет должен содержать следующие разделы:
-1. **Тема обсуждения** (краткое резюме обсуждаемой проблемы).
-2. **Сводная таблица участников**: для каждой роли/персоны (например, Оптимист, Скептик, Соглашатель, Хейтер), которая принимала участие:
-   - Участник (Роль)
-   - Основной тезис (Claim)
-   - Аргументы и доказательства (Evidence)
-3. **Отвергнутые альтернативы**: перечень вариантов решений или идей, которые были предложены другими участниками дебатов, но отвергнуты (с указанием причин).
-4. **Итоговое принятое решение**: компромиссы, итоговая архитектура или соглашения, к которым пришли участники.
-
-Отвечай строго на русском языке в формате Markdown. Начни сразу с заголовка "# Чек дебатов (Debate Receipt)" и не пиши никаких вводных слов от себя.`;
-  let responseText = "";
-  try {
-    responseText = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", targetDebateId], receiptPrompt);
-  } catch (err) {
-    responseText = `# Чек дебатов (Сессия: ${targetDebateId})
-
-Не удалось автоматически проанализировать сессию с помощью AI: ${err.message}.`;
-  }
-  let auditMarkdown = `
-
-## Аудит безопасности и изменений (Hooks Audit)
-
-`;
-  if (allowedChanges.length > 0) {
-    auditMarkdown += `### Успешные изменения файлов
-
-`;
-    auditMarkdown += `| Файл | Инструмент | Статус | Время |
-`;
-    auditMarkdown += `| :--- | :--- | :--- | :--- |
-`;
-    for (const item of allowedChanges) {
-      auditMarkdown += `| \`${item.file}\` | \`${item.tool}\` | ✅ Разрешено | ${item.timestamp} |
-`;
-    }
-    auditMarkdown += `
-`;
-  } else {
-    auditMarkdown += `*Изменений файлов в рамках этой сессии зафиксировано не было.*
-
-`;
-  }
-  if (blockedAttempts.length > 0) {
-    auditMarkdown += `### Заблокированные нарушения правил
-
-`;
-    for (const item of blockedAttempts) {
-      auditMarkdown += `> [!WARNING]
-`;
-      auditMarkdown += `> **Попытка нарушения правил кодирования заблокирована хуком безопасности**
-`;
-      auditMarkdown += `> - **Файл**: \`${item.file}\`
-`;
-      auditMarkdown += `> - **Инструмент**: \`${item.tool}\`
-`;
-      auditMarkdown += `> - **Причина блокировки**: ${item.reason || "Не указана"}
-`;
-      auditMarkdown += `> - **Время**: ${item.timestamp}
-
-`;
-    }
-  } else {
-    auditMarkdown += `> [!NOTE]
-`;
-    auditMarkdown += `> Попыток нарушения правил кодирования (использование \`@ts-ignore\` или жестко заданных цветов) в этой сессии не зафиксировано.
-
-`;
-  }
-  const finalReport = `${responseText.trim()}${auditMarkdown}`;
-  return {
-    content: [
-      {
-        type: "text",
-        text: finalReport
-      }
-    ]
-  };
-}
-
 // src/index.ts
 var server = new Server({
   name: "antigravity-bridge",
@@ -14805,6 +14865,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             rounds: {
               type: "number",
               description: "Number of debate rounds (turns) to run. Clamped between 3 and 10. Default: 5."
+            },
+            language: {
+              type: "string",
+              description: "The language for the debate. Supported: 'ru', 'en'. Default: 'ru'.",
+              enum: ["ru", "en"]
             }
           },
           required: ["topic"]

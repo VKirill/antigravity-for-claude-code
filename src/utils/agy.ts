@@ -24,12 +24,11 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       let stderr = "";
       let isTimedOut = false;
 
-      // Timeout handler: 3 minutes (180000 ms)
+      // Timeout handler: 90 seconds (90000 ms)
       const timeoutId = setTimeout(() => {
         isTimedOut = true;
         child.kill("SIGKILL");
-        reject(new Error("Process timed out after 3 minutes"));
-      }, 180000);
+      }, 90000);
 
       // Write prompt to stdin and close it
       child.stdin.write(prompt);
@@ -55,7 +54,10 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
             resolve(trimmedOutput);
           }
         } else {
-          const err = new Error(`agy process exited with code ${code}. Stderr: ${stderr.trim()}`);
+          const errMessage = isTimedOut
+            ? "Process timed out after 90 seconds"
+            : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
+          const err = new Error(errMessage);
           if (isTimedOut) {
             (err as any).retryable = true;
           } else {

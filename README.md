@@ -65,7 +65,7 @@ You also get tools for **multi-role AI debates** (deliberations), automated **co
 These files guide Gemini to act as a professional coder, architect, or designer:
 * **Core Skills**: `coder-craft` (clean code, surgical edits, no extra refactoring), `karpathy-guidelines` (think before coding, simplicity first).
 * **Workflow**: `orchestrator-workflow` (YAML contract parsing, DB structure, autonomous recovery), `claude-code` (standard integration patterns).
-* **Frontend Stacks**: `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `motion-spec-handoff`, `web-qa-2026`.
+* **Frontend Stacks**: `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `web-qa-2026`.
 * **Testing & Text**: `pytest`, `vitest`, `ru-text-quick` (strict editorial guidelines, no AI clichés).
 
 ---

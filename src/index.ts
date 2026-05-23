@@ -85,6 +85,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "number",
               description: "Number of debate rounds (turns) to run. Clamped between 3 and 10. Default: 5.",
             },
+            language: {
+              type: "string",
+              description: "The language for the debate. Supported: 'ru', 'en'. Default: 'ru'.",
+              enum: ["ru", "en"],
+            },
           },
           required: ["topic"],
         },

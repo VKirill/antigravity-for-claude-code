@@ -65,7 +65,7 @@
 Эти папки содержат инструкции, которые помогают Gemini работать как профессиональный разработчик или архитектор:
 * **Базовые правила**: `coder-craft` (чистый код, хирургические правки, контроль лимитов строк), `karpathy-guidelines` (принципы Андрея Карпатого: простота кода, отказ от лишних абстракций).
 * **Рабочий процесс**: `orchestrator-workflow` (парсинг YAML-контрактов, взаимодействие с БД, автоматическое восстановление), `claude-code` (стандартные паттерны вызовов).
-* **Фронтенд-стек**: `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `motion-spec-handoff`, `web-qa-2026` (инспекция a11y, Lighthouse, адаптивность).
+* **Фронтенд-стек**: `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `web-qa-2026` (инспекция a11y, Lighthouse, адаптивность).
 * **Тестирование и редактура**: `pytest`, `vitest`, `ru-text-quick` (инфостиль, правила русской типографики, запрет ИИ-клише).
 
 ---
