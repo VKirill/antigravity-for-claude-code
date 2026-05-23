@@ -2,14 +2,14 @@
   "name": "antigravity-for-claude-code",
   "version": "1.0.0",
   "description": "Advanced MCP server bridging Claude Code with Antigravity CLI",
-  "main": "server.ts",
+  "main": "src/index.ts",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/VKirill/antigravity-for-claude-code.git"
   },
   "scripts": {
-    "build": "bun build server.ts --outdir ./dist --target node",
+    "build": "bun build src/index.ts --outdir ./dist --target node",
     "test": "bun test",
     "install-hooks": "node install-hooks.cjs"
   },

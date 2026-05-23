@@ -21,4 +21,4 @@ fi
 export HOME="$MCP_HOME"
 
 # Run the server via Bun
-exec bun run /home/ubuntu/tools/antigravity-for-claude-code/server.ts
+exec bun run /home/ubuntu/tools/antigravity-for-claude-code/src/index.ts
