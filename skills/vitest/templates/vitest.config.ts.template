@@ -1,0 +1,112 @@
+// vitest.config.ts — production preset for {{project_name}}
+// Vitest 4.x — Vite-native, ESM-first
+// Fill in {{placeholders}} and remove unused sections.
+import { defineConfig } from 'vitest/config'
+// import react from '@vitejs/plugin-react'  // uncomment for React projects
+// import { resolve } from 'node:path'
+
+export default defineConfig({
+  // plugins: [react()],  // uncomment for React/Vue/Svelte
+
+  // resolve: {           // uncomment if you use path aliases in source
+  //   alias: {
+  //     '@': resolve(__dirname, 'src'),
+  //   },
+  // },
+
+  test: {
+    // --- Environment ---
+    // 'node' for backend/CLI, 'jsdom'/'happy-dom' for DOM, 'edge-runtime' for CF Workers
+    environment: '{{environment}}',  // 'node' | 'jsdom' | 'happy-dom'
+
+    // --- Globals ---
+    // true → describe/it/expect/vi available without imports
+    // false → explicit imports (recommended for explicitness)
+    globals: false,
+
+    // --- Setup files (run before each test FILE) ---
+    setupFiles: ['./src/test/setup.ts'],
+
+    // --- Global setup (run once per WORKER, not per file) ---
+    // globalSetup: ['./src/test/global-setup.ts'],
+
+    // --- Test discovery ---
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/e2e/**',    // keep Playwright E2E separate
+    ],
+
+    // --- Pool (v4 syntax — flattened from v3) ---
+    pool: 'forks',    // 'forks' (default) | 'threads' | 'vmForks' | 'vmThreads'
+    poolOptions: {
+      forks: {
+        singleFork: false,   // true → serial (use for DB integration tests)
+        isolate: true,       // fresh module registry per file
+      },
+    },
+
+    // --- Timeouts ---
+    testTimeout: 5_000,   // ms per test
+    hookTimeout: 10_000,  // ms for beforeEach/afterEach
+
+    // --- Retry flaky tests ---
+    // retry: 1,  // retry once before marking failed
+
+    // --- Coverage ---
+    coverage: {
+      provider: 'v8',               // 'v8' (fast) | 'istanbul' (accurate branches)
+      reporter: ['text', 'html', 'lcov'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.spec.{ts,tsx}',
+        'src/test/**',
+        'src/**/*.d.ts',
+        'src/**/index.ts',          // barrel re-export files
+        'src/main.{ts,tsx}',        // app entry
+      ],
+      all: true,                    // report files never imported by tests
+      thresholds: {
+        statements: {{coverage_statements}},   // e.g. 80
+        branches: {{coverage_branches}},       // e.g. 70
+        functions: {{coverage_functions}},     // e.g. 80
+        lines: {{coverage_lines}},             // e.g. 80
+        // perFile: true,  // enforce per-file (stricter — enable when suite matures)
+      },
+      reportsDirectory: './coverage',
+    },
+
+    // --- Projects (v4 — multi-environment or monorepo) ---
+    // Uncomment when you need multiple environments in one run:
+    //
+    // projects: [
+    //   {
+    //     test: {
+    //       name: 'unit',
+    //       environment: 'node',
+    //       include: ['src/**/*.unit.test.ts'],
+    //     },
+    //   },
+    //   {
+    //     plugins: [react()],
+    //     test: {
+    //       name: 'components',
+    //       environment: 'jsdom',
+    //       include: ['src/**/*.component.test.tsx'],
+    //     },
+    //   },
+    // ],
+
+    // --- Watch mode ---
+    forceRerunTriggers: [
+      '**/vitest.config.*',
+      '**/vite.config.*',
+      '**/package.json',
+    ],
+
+    // --- Reporters ---
+    // reporters: ['verbose'],  // 'default' | 'verbose' | 'dot' | 'json' | 'junit'
+  },
+})

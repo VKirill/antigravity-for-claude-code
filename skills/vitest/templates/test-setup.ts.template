@@ -1,0 +1,76 @@
+// src/test/setup.ts — runs before EACH test file
+// Configure in vitest.config.ts: test.setupFiles: ['./src/test/setup.ts']
+//
+// This file is the right place for:
+// - Global mock setup that ALL tests need
+// - Environment variable defaults for tests
+// - Custom matchers or expect extensions
+// - DOM environment cleanup (jsdom)
+//
+// NOT for DB connections or server startup — use globalSetup for those.
+
+import { afterEach, vi } from 'vitest'
+
+// --- Restore all spies after each test ---
+// Prevents spy state leaking between tests (critical in Vitest 4 isolation model).
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.clearAllMocks()
+})
+
+// --- Fake timers cleanup ---
+// Uncomment if ANY test in the suite might use vi.useFakeTimers.
+// afterEach(() => {
+//   vi.useRealTimers()
+// })
+
+// --- Environment variables for tests ---
+// Set test-specific env vars. These override .env.* files.
+process.env['NODE_ENV'] = 'test'
+// process.env['DATABASE_URL'] = 'postgresql://localhost:5432/myapp_test'
+// process.env['JWT_SECRET'] = 'test-secret-not-for-production'
+
+// --- Global fetch mock (optional) ---
+// Uncomment if you want to mock all fetch calls globally.
+// vi.mock('node-fetch', () => ({ default: vi.fn() }))
+
+// --- Console noise suppression (optional) ---
+// Suppress expected console.error calls to keep test output clean.
+// Only suppress known patterns — never suppress all errors blindly.
+//
+// const originalError = console.error.bind(console)
+// beforeEach(() => {
+//   vi.spyOn(console, 'error').mockImplementation((...args) => {
+//     // Suppress React act() warnings in tests
+//     if (typeof args[0] === 'string' && args[0].includes('act(')) return
+//     originalError(...args)
+//   })
+// })
+
+// --- Custom matchers (optional) ---
+// import { expect } from 'vitest'
+//
+// expect.extend({
+//   toBeWithinRange(received: number, floor: number, ceiling: number) {
+//     const pass = received >= floor && received <= ceiling
+//     return {
+//       pass,
+//       message: () =>
+//         `expected ${received} to be within range [${floor}, ${ceiling}]`,
+//     }
+//   },
+// })
+//
+// // TypeScript: declare the custom matcher type
+// declare module 'vitest' {
+//   interface Assertion<R = any> {
+//     toBeWithinRange(floor: number, ceiling: number): R
+//   }
+// }
+
+// --- jsdom / happy-dom cleanup (optional) ---
+// Uncomment when environment is 'jsdom' or 'happy-dom'
+// afterEach(() => {
+//   document.body.innerHTML = ''
+//   document.head.innerHTML = ''
+// })
