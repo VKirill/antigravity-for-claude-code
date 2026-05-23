@@ -1,0 +1,17 @@
+{
+  "code-guidelines-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/ubuntu/tools/antigravity-for-claude-code/scripts/validate-tool-call.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
