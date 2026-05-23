@@ -117,6 +117,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Action to perform: 'next' (continue the debate with a new round) or 'finalize' (conclude the debate and synthesize the final ADR). Default is 'next'.",
               enum: ["next", "finalize"],
             },
+            language: {
+              type: "string",
+              description: "The language for the debate. Supported: 'ru', 'en'. Defaults to auto-detection based on the topic/comment.",
+              enum: ["ru", "en"],
+            },
           },
         },
       },
@@ -169,6 +174,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             debateId: {
               type: "string",
               description: "The unique ID of the debate session to generate a receipt for. If not provided, uses the last active session in memory.",
+            },
+            language: {
+              type: "string",
+              description: "The language for the receipt. Supported: 'ru', 'en'. Default: 'ru'.",
+              enum: ["ru", "en"],
             },
           },
         },

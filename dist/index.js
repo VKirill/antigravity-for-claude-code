@@ -14273,6 +14273,104 @@ import { writeFileSync } from "fs";
 import { readFileSync, existsSync } from "fs";
 import { join as join2 } from "path";
 import os from "os";
+var RECEIPT_PROMPTS = {
+  ru: {
+    prompt: `Пожалуйста, проанализируй историю текущей сессии дебатов и сформируй структурированный отчет на русском языке.
+
+Отчет должен содержать следующие разделы:
+1. **Тема обсуждения** (краткое резюме обсуждаемой проблемы).
+2. **Сводная таблица участников**: для каждой роли/персоны (например, Оптимист, Скептик, Соглашатель, Хейтер), которая принимала участие:
+   - Участник (Роль)
+   - Основной тезис (Claim)
+   - Аргументы и доказательства (Evidence)
+3. **Отвергнутые альтернативы**: перечень вариантов решений или идей, которые были предложены другими участниками дебатов, но отвергнуты (с указанием причин).
+4. **Итоговое принятое решение**: компромиссы, итоговая архитектура или соглашения, к которым пришли участники.
+
+Отвечай строго на русском языке в формате Markdown. Начни сразу с заголовка "# Чек дебатов (Debate Receipt)" и не пиши никаких вводных слов от себя.`,
+    error: (id, msg) => `# Чек дебатов (Сессия: ${id})
+
+Не удалось автоматически проанализировать сессию с помощью AI: ${msg}.`,
+    hooksAudit: `
+
+## Аудит безопасности и изменений (Hooks Audit)
+
+`,
+    allowedChanges: `### Успешные изменения файлов
+
+`,
+    allowedHeaders: `| Файл | Инструмент | Статус | Время |
+| :--- | :--- | :--- | :--- |
+`,
+    allowedRow: (file, tool, time3) => `| \`${file}\` | \`${tool}\` | ✅ Разрешено | ${time3} |
+`,
+    noChanges: `*Изменений файлов в рамках этой сессии зафиксировано не было.*
+
+`,
+    blockedAttempts: `### Заблокированные нарушения правил
+
+`,
+    blockedWarning: (file, tool, reason, time3) => `> [!WARNING]
+> **Попытка нарушения правил кодирования заблокирована хуком безопасности**
+> - **Файл**: \`${file}\`
+> - **Инструмент**: \`${tool}\`
+> - **Причина блокировки**: ${reason || "Не указана"}
+> - **Время**: ${time3}
+
+`,
+    noViolations: `> [!NOTE]
+> Попыток нарушения правил кодирования (использование \`@ts-ignore\` или жестко заданных цветов) в этой сессии не зафиксировано.
+
+`
+  },
+  en: {
+    prompt: `Please analyze the history of the current debate session and generate a structured report in English.
+
+The report must contain the following sections:
+1. **Debate Topic** (brief summary of the discussed problem).
+2. **Participants Summary Table**: for each role/persona (e.g. Optimist, Skeptic, Agreer, Hater) that participated:
+   - Participant (Role)
+   - Core claim (Claim)
+   - Arguments and evidence (Evidence)
+3. **Rejected Alternatives**: list of proposed options or ideas that were rejected (with reasons).
+4. **Final Decision**: compromises, final architecture, or agreements reached.
+
+Respond strictly in English in Markdown format. Start directly with the header "# Debate Receipt" and do not write any introductory text.`,
+    error: (id, msg) => `# Debate Receipt (Session: ${id})
+
+Failed to automatically analyze the session using AI: ${msg}.`,
+    hooksAudit: `
+
+## Hooks & Security Audit
+
+`,
+    allowedChanges: `### Approved File Modifications
+
+`,
+    allowedHeaders: `| File | Tool | Status | Time |
+| :--- | :--- | :--- | :--- |
+`,
+    allowedRow: (file, tool, time3) => `| \`${file}\` | \`${tool}\` | ✅ Allowed | ${time3} |
+`,
+    noChanges: `*No file modifications were recorded in this session.*
+
+`,
+    blockedAttempts: `### Blocked Quality Violations
+
+`,
+    blockedWarning: (file, tool, reason, time3) => `> [!WARNING]
+> **Coding policy violation blocked by security hook**
+> - **File**: \`${file}\`
+> - **Tool**: \`${tool}\`
+> - **Block Reason**: ${reason || "Not specified"}
+> - **Time**: ${time3}
+
+`,
+    noViolations: `> [!NOTE]
+> No coding policy violations (such as using \`@ts-ignore\` or hardcoded colors) were attempted in this session.
+
+`
+  }
+};
 async function handleGetDebateReceipt(args) {
   const targetDebateId = args?.debateId ? String(args.debateId) : sessionState.activeConversationId || getNewestConversationId();
   if (!targetDebateId) {
@@ -14286,6 +14384,9 @@ async function handleGetDebateReceipt(args) {
       isError: true
     };
   }
+  const langInput = args?.language;
+  const lang = langInput === "en" || langInput === "english" ? "en" : "ru";
+  const prompts = RECEIPT_PROMPTS[lang];
   const homeDir = process.env.HOME || os.homedir();
   const auditLogPath = join2(homeDir, ".gemini/antigravity-cli/hooks-audit.jsonl");
   const touchedFiles = [];
@@ -14308,75 +14409,31 @@ async function handleGetDebateReceipt(args) {
   }
   const allowedChanges = touchedFiles.filter((f) => f.decision === "allow");
   const blockedAttempts = touchedFiles.filter((f) => f.decision === "block");
-  const receiptPrompt = `Пожалуйста, проанализируй историю текущей сессии дебатов и сформируй структурированный отчет на русском языке.
-
-Отчет должен содержать следующие разделы:
-1. **Тема обсуждения** (краткое резюме обсуждаемой проблемы).
-2. **Сводная таблица участников**: для каждой роли/персоны (например, Оптимист, Скептик, Соглашатель, Хейтер), которая принимала участие:
-   - Участник (Роль)
-   - Основной тезис (Claim)
-   - Аргументы и доказательства (Evidence)
-3. **Отвергнутые альтернативы**: перечень вариантов решений или идей, которые были предложены другими участниками дебатов, но отвергнуты (с указанием причин).
-4. **Итоговое принятое решение**: компромиссы, итоговая архитектура или соглашения, к которым пришли участники.
-
-Отвечай строго на русском языке в формате Markdown. Начни сразу с заголовка "# Чек дебатов (Debate Receipt)" и не пиши никаких вводных слов от себя.`;
   let responseText = "";
   try {
-    responseText = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", targetDebateId], receiptPrompt);
+    responseText = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", targetDebateId], prompts.prompt);
   } catch (err) {
-    responseText = `# Чек дебатов (Сессия: ${targetDebateId})
-
-Не удалось автоматически проанализировать сессию с помощью AI: ${err.message}.`;
+    responseText = prompts.error(targetDebateId, err.message);
   }
-  let auditMarkdown = `
-
-## Аудит безопасности и изменений (Hooks Audit)
-
-`;
+  let auditMarkdown = prompts.hooksAudit;
   if (allowedChanges.length > 0) {
-    auditMarkdown += `### Успешные изменения файлов
-
-`;
-    auditMarkdown += `| Файл | Инструмент | Статус | Время |
-`;
-    auditMarkdown += `| :--- | :--- | :--- | :--- |
-`;
+    auditMarkdown += prompts.allowedChanges;
+    auditMarkdown += prompts.allowedHeaders;
     for (const item of allowedChanges) {
-      auditMarkdown += `| \`${item.file}\` | \`${item.tool}\` | ✅ Разрешено | ${item.timestamp} |
-`;
+      auditMarkdown += prompts.allowedRow(item.file, item.tool, item.timestamp);
     }
     auditMarkdown += `
 `;
   } else {
-    auditMarkdown += `*Изменений файлов в рамках этой сессии зафиксировано не было.*
-
-`;
+    auditMarkdown += prompts.noChanges;
   }
   if (blockedAttempts.length > 0) {
-    auditMarkdown += `### Заблокированные нарушения правил
-
-`;
+    auditMarkdown += prompts.blockedAttempts;
     for (const item of blockedAttempts) {
-      auditMarkdown += `> [!WARNING]
-`;
-      auditMarkdown += `> **Попытка нарушения правил кодирования заблокирована хуком безопасности**
-`;
-      auditMarkdown += `> - **Файл**: \`${item.file}\`
-`;
-      auditMarkdown += `> - **Инструмент**: \`${item.tool}\`
-`;
-      auditMarkdown += `> - **Причина блокировки**: ${item.reason || "Не указана"}
-`;
-      auditMarkdown += `> - **Время**: ${item.timestamp}
-
-`;
+      auditMarkdown += prompts.blockedWarning(item.file, item.tool, item.reason, item.timestamp);
     }
   } else {
-    auditMarkdown += `> [!NOTE]
-`;
-    auditMarkdown += `> Попыток нарушения правил кодирования (использование \`@ts-ignore\` или жестко заданных цветов) в этой сессии не зафиксировано.
-
-`;
+    auditMarkdown += prompts.noViolations;
   }
   const finalReport = `${responseText.trim()}${auditMarkdown}`;
   return {
@@ -14448,11 +14505,104 @@ Study the refined proposal from the Optimist. Is the project still doomed to fai
 Analyze the entire debate history. Write the final structured Architecture Decision Record (ADR) in English. It must include: topic, context, final decision, trade-offs, and risk mitigation list.`
   }
 };
+var INTERACTIVE_PROMPTS = {
+  ru: {
+    optimist: (topic) => `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]
+
+Тема для дебатов: ${topic}
+
+Предложи начальную архитектуру или техническое решение.`,
+    skeptic: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]
+
+Изучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`,
+    agreer: (comment) => `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:
+${comment}
+
+[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]
+
+Изучи предложение Оптимиста, критику Скептика и комментарий Судьи. Поддержи Оптимиста и Судью, похвали простоту, предложи срезать углы ради быстрой разработки.`,
+    hater: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]
+
+Изучи ход дебатов и комментарий Судьи. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`,
+    synthesizer: (comment) => {
+      let p = "";
+      if (comment)
+        p += `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:
+${comment}
+
+`;
+      p += `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]
+
+Изучи весь ход дебатов, включая комментарии Судьи. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение (с учетом финального мнения Судьи), компромиссы (trade-offs) и список рисков с их минимизацией.`;
+      return p;
+    },
+    title: (topic) => `# Интерактивные дебаты: ${topic}
+`,
+    finalizeTitle: (id) => `# Финализация дебатов (Сессия: ${id})
+
+`,
+    judgeComment: "Ваш комментарий как Судьи:",
+    nextSteps: (id) => `---
+**Пожалуйста, введите ваш комментарий как Судья/Архитектор**, чтобы направить ход дебатов.
+Используйте инструмент \`run_interactive_debate\`, передав \`debateId: "${id}"\` и \`userComment: "ваш комментарий"\`.
+Или завершите дебаты и сгенерируйте ADR, передав \`action: "finalize"\`.
+
+`,
+    nextStepsCont: 'Или завершите дебаты и сгенерируйте итоговый ADR, передав `action: "finalize"`.\n\n'
+  },
+  en: {
+    optimist: (topic) => `[SYSTEM PROMPT FOR ROLE: You are the Optimist (Engineer-Developer). Your goal is to propose creative and robust technical solutions. Your tone: enthusiastic developer ready to build.]
+
+Debate topic: ${topic}
+
+Propose an initial architecture or technical solution in English.`,
+    skeptic: `[SYSTEM PROMPT FOR ROLE: You are the Skeptic (Logic Critic). Your goal is to find weaknesses in the proposal, question logic, ask challenging questions, and point out redundant complexity. Your tone: constructive critic.]
+
+Analyze the Optimist's initial proposal. Ask tough questions and point out logical inconsistencies in English.`,
+    agreer: (comment) => `[JUDGE/USER COMMENT]:
+${comment}
+
+[SYSTEM PROMPT FOR ROLE: You are the Agreer. Your goal is to agree with the Optimist and the Judge, praise the simplicity of the solution, suggest cutting corners for speed of development, and ignore complex validations.]
+
+Study the Optimist's proposal, the Skeptic's feedback, and the Judge's comment. Support the Optimist and the Judge, praise the simplicity, and suggest cutting corners to ship faster in English.`,
+    hater: `[SYSTEM PROMPT FOR ROLE: You are the Hater (Toxic Pessimist). Your goal is to express strong doubts and argue that the project is doomed to fail. Bring up real-world failures and toxic skepticism.]
+
+Analyze the debate and the Judge's comment. Speak out strongly against this initiative: explain why the project will fail, give examples of real-world failures, add cynical doubts, and claim it will crash in English.`,
+    synthesizer: (comment) => {
+      let p = "";
+      if (comment)
+        p += `[JUDGE/USER COMMENT]:
+${comment}
+
+`;
+      p += `[SYSTEM PROMPT FOR ROLE: You are the Synthesizer (Lead Architect). Your goal is to weigh all opinions, consider the Judge's final input, and write a final Architecture Decision Record (ADR) in English.]
+
+Analyze the entire debate history, including the Judge's comments. Write the final structured Architecture Decision Record (ADR) in English. It must include: topic, context, final decision (taking the Judge's final view into account), trade-offs, and risk mitigation list.`;
+      return p;
+    },
+    title: (topic) => `# Interactive Debate: ${topic}
+`,
+    finalizeTitle: (id) => `# Debate Finalization (Session: ${id})
+
+`,
+    judgeComment: "Your comment as Judge:",
+    nextSteps: (id) => `---
+**Please enter your comment as the Judge/Architect** to guide the debate.
+Use the \`run_interactive_debate\` tool, passing \`debateId: "${id}"\` and \`userComment: "your comment"\`.
+Or finalize the debate and generate the ADR by passing \`action: "finalize"\`.
+
+`,
+    nextStepsCont: 'Or finalize the debate and generate the final ADR by passing `action: "finalize"`.\n\n'
+  }
+};
+function detectLanguage(text) {
+  return /[а-яА-ЯёЁ]/.test(text) ? "ru" : "en";
+}
 async function handleRunDebateDeliberation(args) {
   const topic = String(args?.topic || "");
   const roundsInput = args?.rounds ? Number(args.rounds) : 5;
   const rounds = Math.max(3, Math.min(10, roundsInput));
-  const lang = args?.language === "en" || args?.language === "english" ? "en" : "ru";
+  const lang = args?.language === "en" || args?.language === "english" ? "en" : args?.language === "ru" ? "ru" : detectLanguage(topic);
   const transcript = [];
   let debateConversationId = null;
   const prompts = DEBATE_PROMPTS[lang];
@@ -14531,7 +14681,7 @@ ${entry.text}
       const receiptPath = `${projectCwd}/debate-receipt.md`;
       writeFileSync(deliberationPath, outputMarkdown);
       if (debateConversationId) {
-        const receiptResult = await handleGetDebateReceipt({ debateId: debateConversationId });
+        const receiptResult = await handleGetDebateReceipt({ debateId: debateConversationId, language: lang });
         if (!receiptResult.isError && receiptResult.content && receiptResult.content[0]) {
           writeFileSync(receiptPath, receiptResult.content[0].text);
         }
@@ -14562,25 +14712,17 @@ async function handleRunInteractiveDebate(args) {
   const userComment = args?.userComment ? String(args.userComment) : undefined;
   const action = args?.action ? String(args.action) : "next";
   let debateConversationId = args?.debateId ? String(args.debateId) : sessionState.activeConversationId;
+  const langInput = args?.language;
+  const lang = langInput === "en" || langInput === "english" ? "en" : langInput === "ru" || langInput === "russian" ? "ru" : topic ? detectLanguage(topic) : userComment ? detectLanguage(userComment) : "ru";
+  const prompts = INTERACTIVE_PROMPTS[lang];
   try {
     if (action === "finalize") {
       if (!debateConversationId) {
-        throw new Error("No active debate session found. Please specify debateId or start a new debate with a topic.");
+        throw new Error(lang === "en" ? "No active debate session found. Please specify debateId." : "No active debate session found. Please specify debateId.");
       }
-      let finalPrompt = "";
-      if (userComment) {
-        finalPrompt = `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:
-${userComment}
-
-`;
-      }
-      finalPrompt += `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]
-
-Изучи весь ход дебатов, включая комментарии Судьи. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение (с учетом финального мнения Судьи), компромиссы (trade-offs) и список рисков с их минимизацией.`;
+      const finalPrompt = prompts.synthesizer(userComment);
       const synthesisOutput = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId], finalPrompt);
-      let outputMarkdown = `# Финализация дебатов (Сессия: ${debateConversationId})
-
-`;
+      let outputMarkdown = prompts.finalizeTitle(debateConversationId);
       outputMarkdown += `${synthesisOutput}
 
 `;
@@ -14596,43 +14738,29 @@ ${userComment}
       };
     }
     if (topic) {
-      const r1Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]
-
-Тема для дебатов: ${topic}
-
-Предложи начальную архитектуру или техническое решение.`;
+      const r1Prompt = prompts.optimist(topic);
       const r1Output = await runAgy(["--dangerously-skip-permissions", "--print", "--continue=false"], r1Prompt);
       debateConversationId = getNewestConversationId();
       if (!debateConversationId) {
         throw new Error("Failed to initialize debate conversation ID");
       }
-      const r2Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]
-
-Изучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`;
+      const r2Prompt = prompts.skeptic;
       const r2Output = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId], r2Prompt);
-      let outputMarkdown = `# Интерактивные дебаты: ${topic}
-`;
-      outputMarkdown += `ID сессии: \`${debateConversationId}\`
+      let outputMarkdown = prompts.title(topic);
+      outputMarkdown += lang === "en" ? `Session ID: \`${debateConversationId}\`
+
+` : `ID сессии: \`${debateConversationId}\`
 
 `;
-      outputMarkdown += `## Раунд 1: [OPTIMIST]
+      outputMarkdown += `## Round 1: [OPTIMIST]
 ${r1Output}
 
 `;
-      outputMarkdown += `## Раунд 2: [SKEPTIC]
+      outputMarkdown += `## Round 2: [SKEPTIC]
 ${r2Output}
 
 `;
-      outputMarkdown += `---
-`;
-      outputMarkdown += `**Пожалуйста, введите ваш комментарий как Судья/Архитектор**, чтобы направить ход дебатов.
-`;
-      outputMarkdown += `Используйте инструмент \`run_interactive_debate\`, передав \`debateId: "${debateConversationId}"\` и \`userComment: "ваш комментарий"\`.
-`;
-      outputMarkdown += `Или завершите дебаты и сгенерируйте ADR, передав \`action: "finalize"\`.
-
-`;
-      outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
+      outputMarkdown += prompts.nextSteps(debateConversationId);
       sessionState.activeConversationId = debateConversationId;
       return {
         content: [
@@ -14645,40 +14773,26 @@ ${r2Output}
     }
     if (debateConversationId) {
       if (!userComment) {
-        throw new Error("Missing 'userComment' to continue the debate. Please provide a comment or use action: 'finalize'.");
+        throw new Error(lang === "en" ? "Missing 'userComment' to continue the debate." : "Missing 'userComment' to continue the debate.");
       }
-      const r3Prompt = `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:
-${userComment}
-
-[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]
-
-Изучи предложение Оптимиста, критику Скептика и комментарий Судьи. Поддержи Оптимиста и Судью, похвали простоту, предложи срезать углы ради быстрой разработки.`;
+      const r3Prompt = prompts.agreer(userComment);
       const r3Output = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId], r3Prompt);
-      const r4Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]
-
-Изучи ход дебатов и комментарий Судьи. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`;
+      const r4Prompt = prompts.hater;
       const r4Output = await runAgy(["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId], r4Prompt);
-      let outputMarkdown = `# Интерактивные дебаты (Сессия: ${debateConversationId})
-
-`;
-      outputMarkdown += `### Ваш комментарий как Судьи:
+      let outputMarkdown = prompts.finalizeTitle(debateConversationId);
+      outputMarkdown += `### ${prompts.judgeComment}
 > ${userComment}
 
 `;
-      outputMarkdown += `## Раунд 3: [AGREER]
+      outputMarkdown += `## Round 3: [AGREER]
 ${r3Output}
 
 `;
-      outputMarkdown += `## Раунд 4: [HATER]
+      outputMarkdown += `## Round 4: [HATER]
 ${r4Output}
 
 `;
-      outputMarkdown += `---
-`;
-      outputMarkdown += `**Вы можете продолжить обсуждение**, введя новый комментарий, или завершить его и сгенерировать итоговый ADR, передав \`action: "finalize"\`.
-
-`;
-      outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
+      outputMarkdown += prompts.nextStepsCont;
       sessionState.activeConversationId = debateConversationId;
       return {
         content: [
@@ -14689,13 +14803,13 @@ ${r4Output}
         ]
       };
     }
-    throw new Error("No active debate session. Please provide a 'topic' to start a new debate, or specify 'debateId' to continue.");
+    throw new Error(lang === "en" ? "No active debate session." : "No active debate session.");
   } catch (err) {
     return {
       content: [
         {
           type: "text",
-          text: `Ошибка во время интерактивных дебатов: ${err.message}`
+          text: lang === "en" ? `Error during interactive debate: ${err.message}` : `Ошибка во время интерактивных дебатов: ${err.message}`
         }
       ],
       isError: true
@@ -14899,6 +15013,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "Action to perform: 'next' (continue the debate with a new round) or 'finalize' (conclude the debate and synthesize the final ADR). Default is 'next'.",
               enum: ["next", "finalize"]
+            },
+            language: {
+              type: "string",
+              description: "The language for the debate. Supported: 'ru', 'en'. Defaults to auto-detection based on the topic/comment.",
+              enum: ["ru", "en"]
             }
           }
         }
@@ -14952,6 +15071,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             debateId: {
               type: "string",
               description: "The unique ID of the debate session to generate a receipt for. If not provided, uses the last active session in memory."
+            },
+            language: {
+              type: "string",
+              description: "The language for the receipt. Supported: 'ru', 'en'. Default: 'ru'.",
+              enum: ["ru", "en"]
             }
           }
         }
