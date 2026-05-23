@@ -117,6 +117,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "run_interactive_debate",
+        description: "Runs an interactive multi-turn debate session where the user acts as a Judge/Architect, guiding the AI personas (Optimist, Skeptic, Agreer, Hater) with comments, culminating in a structured ADR.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            topic: {
+              type: "string",
+              description: "The topic of the debate. Required only when starting a new debate session.",
+            },
+            userComment: {
+              type: "string",
+              description: "The comment or feedback from the user (Judge/Architect) to guide the debate.",
+            },
+            debateId: {
+              type: "string",
+              description: "The ID of the active debate session to continue. If not specified, uses the last active session in memory.",
+            },
+            action: {
+              type: "string",
+              description: "Action to perform: 'next' (continue the debate with a new round) or 'finalize' (conclude the debate and synthesize the final ADR). Default is 'next'.",
+              enum: ["next", "finalize"],
+            },
+          },
+        },
+      },
+      {
         name: "review_code_changes",
         description: "Analyzes a git diff or code snippet for logic errors, code quality, security vulnerabilities, and adherence to clean code principles (SOLID, DRY, KISS). Runs in a single non-continuous session.",
         inputSchema: {
@@ -403,6 +429,149 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           {
             type: "text",
             text: `Ошибка во время дебатов: ${err.message}`,
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+
+  if (name === "run_interactive_debate") {
+    const topic = args?.topic ? String(args.topic) : undefined;
+    const userComment = args?.userComment ? String(args.userComment) : undefined;
+    const action = args?.action ? String(args.action) : "next";
+    
+    let debateConversationId = args?.debateId ? String(args.debateId) : activeConversationId;
+
+    try {
+      if (action === "finalize") {
+        if (!debateConversationId) {
+          throw new Error("No active debate session found. Please specify debateId or start a new debate with a topic.");
+        }
+
+        // Run Synthesizer
+        let finalPrompt = "";
+        if (userComment) {
+          finalPrompt = `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:\n${userComment}\n\n`;
+        }
+        finalPrompt += `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]\n\nИзучи весь ход дебатов, включая комментарии Судьи. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение (с учетом финального мнения Судьи), компромиссы (trade-offs) и список рисков с их минимизацией.`;
+
+        const synthesisOutput = await runAgy(
+          ["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId],
+          finalPrompt
+        );
+
+        let outputMarkdown = `# Финализация дебатов (Сессия: ${debateConversationId})\n\n`;
+        outputMarkdown += `${synthesisOutput}\n\n`;
+        outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
+
+        // Update active session ID in memory
+        activeConversationId = debateConversationId;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: outputMarkdown,
+            }
+          ]
+        };
+      }
+
+      // If we are starting a new session (topic provided)
+      if (topic) {
+        // Round 1: Optimist initial proposal
+        const r1Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]\n\nТема для дебатов: ${topic}\n\nПредложи начальную архитектуру или техническое решение.`;
+        
+        const r1Output = await runAgy(["--dangerously-skip-permissions", "--print", "--continue=false"], r1Prompt);
+        debateConversationId = getNewestConversationId();
+        if (!debateConversationId) {
+          throw new Error("Failed to initialize debate conversation ID");
+        }
+
+        // Round 2: Skeptic criticizes
+        const r2Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]\n\nИзучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`;
+        
+        const r2Output = await runAgy(
+          ["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId],
+          r2Prompt
+        );
+
+        let outputMarkdown = `# Интерактивные дебаты: ${topic}\n`;
+        outputMarkdown += `ID сессии: \`${debateConversationId}\`\n\n`;
+        outputMarkdown += `## Раунд 1: [OPTIMIST]\n${r1Output}\n\n`;
+        outputMarkdown += `## Раунд 2: [SKEPTIC]\n${r2Output}\n\n`;
+        outputMarkdown += `---\n`;
+        outputMarkdown += `**Пожалуйста, введите ваш комментарий как Судья/Архитектор**, чтобы направить ход дебатов.\n`;
+        outputMarkdown += `Используйте инструмент \`run_interactive_debate\`, передав \`debateId: "${debateConversationId}"\` и \`userComment: "ваш комментарий"\`.\n`;
+        outputMarkdown += `Или завершите дебаты и сгенерируйте ADR, передав \`action: "finalize"\`.\n\n`;
+        outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
+
+        // Update active session ID in memory
+        activeConversationId = debateConversationId;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: outputMarkdown,
+            }
+          ]
+        };
+      }
+
+      // If we are continuing an existing session
+      if (debateConversationId) {
+        if (!userComment) {
+          throw new Error("Missing 'userComment' to continue the debate. Please provide a comment or use action: 'finalize'.");
+        }
+
+        // Round 3: Agreer reacts to userComment
+        const r3Prompt = `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:\n${userComment}\n\n[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]\n\nИзучи предложение Оптимиста, критику Скептика и комментарий Судьи. Поддержи Оптимиста и Судью, похвали простоту, предложи срезать углы ради быстрой разработки.`;
+        
+        const r3Output = await runAgy(
+          ["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId],
+          r3Prompt
+        );
+
+        // Round 4: Hater reacts to userComment
+        const r4Prompt = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]\n\nИзучи ход дебатов и комментарий Судьи. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`;
+        
+        const r4Output = await runAgy(
+          ["--dangerously-skip-permissions", "--print", "--conversation", debateConversationId],
+          r4Prompt
+        );
+
+        let outputMarkdown = `# Интерактивные дебаты (Сессия: ${debateConversationId})\n\n`;
+        outputMarkdown += `### Ваш комментарий как Судьи:\n> ${userComment}\n\n`;
+        outputMarkdown += `## Раунд 3: [AGREER]\n${r3Output}\n\n`;
+        outputMarkdown += `## Раунд 4: [HATER]\n${r4Output}\n\n`;
+        outputMarkdown += `---\n`;
+        outputMarkdown += `**Вы можете продолжить обсуждение**, введя новый комментарий, или завершить его и сгенерировать итоговый ADR, передав \`action: "finalize"\`.\n\n`;
+        outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
+
+        // Update active session ID in memory
+        activeConversationId = debateConversationId;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: outputMarkdown,
+            }
+          ]
+        };
+      }
+
+      // Neither topic nor debateConversationId is available
+      throw new Error("No active debate session. Please provide a 'topic' to start a new debate, or specify 'debateId' to continue.");
+
+    } catch (err: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Ошибка во время интерактивных дебатов: ${err.message}`,
           }
         ],
         isError: true

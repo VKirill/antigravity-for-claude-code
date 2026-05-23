@@ -162,7 +162,7 @@ describe("Antigravity MCP Server Tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(1);
     expect(response.result.tools).toBeArray();
-    expect(response.result.tools.length).toBe(5);
+    expect(response.result.tools.length).toBe(6);
 
     const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity");
     expect(discussTool).toBeDefined();
@@ -170,6 +170,9 @@ describe("Antigravity MCP Server Tests", () => {
 
     const resetTool = response.result.tools.find((t: any) => t.name === "reset_antigravity_session");
     expect(resetTool).toBeDefined();
+
+    const interactiveDebateTool = response.result.tools.find((t: any) => t.name === "run_interactive_debate");
+    expect(interactiveDebateTool).toBeDefined();
   });
 
   test("discuss_with_antigravity - starts a new session when no ID exists", async () => {
@@ -689,6 +692,200 @@ describe("Antigravity MCP Server Tests", () => {
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain("Ошибка при получении совета по программированию");
     expect(response.result.content[0].text).toContain("Advice API down");
+  });
+
+  test("run_interactive_debate - successfully starts a new debate session", async () => {
+    mockFiles = [{ name: "interactive-debate-1.pb", mtime: 1000 }];
+    mockSpawnOutput = { stdout: "Debate round output.", stderr: "", code: 0 };
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          topic: "Interactive architecture",
+          action: "next"
+        }
+      },
+      id: 50
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 80));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(50);
+    expect(response.result.content[0].text).toContain("Интерактивные дебаты: Interactive architecture");
+    expect(response.result.content[0].text).toContain("## Раунд 1: [OPTIMIST]");
+    expect(response.result.content[0].text).toContain("## Раунд 2: [SKEPTIC]");
+    expect(response.result.content[0].text).toContain("<!-- active_session_id: interactive-debate-1 -->");
+  });
+
+  test("run_interactive_debate - continues existing debate round", async () => {
+    mockSpawnOutput = { stdout: "Continuing round output.", stderr: "", code: 0 };
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          debateId: "interactive-debate-1",
+          userComment: "Let's stick to monolith.",
+          action: "next"
+        }
+      },
+      id: 51
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 80));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(51);
+    expect(response.result.content[0].text).toContain("Интерактивные дебаты (Сессия: interactive-debate-1)");
+    expect(response.result.content[0].text).toContain("### Ваш комментарий как Судьи:\n> Let's stick to monolith.");
+    expect(response.result.content[0].text).toContain("## Раунд 3: [AGREER]");
+    expect(response.result.content[0].text).toContain("## Раунд 4: [HATER]");
+    expect(response.result.content[0].text).toContain("<!-- active_session_id: interactive-debate-1 -->");
+  });
+
+  test("run_interactive_debate - finalizes debate session with userComment", async () => {
+    mockSpawnOutput = { stdout: "Final synthesis ADR output.", stderr: "", code: 0 };
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          debateId: "interactive-debate-1",
+          userComment: "Final decision is monolith.",
+          action: "finalize"
+        }
+      },
+      id: 52
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(52);
+    expect(response.result.content[0].text).toContain("Финализация дебатов (Сессия: interactive-debate-1)");
+    expect(response.result.content[0].text).toContain("Final synthesis ADR output.");
+    expect(response.result.content[0].text).toContain("<!-- active_session_id: interactive-debate-1 -->");
+  });
+
+  test("run_interactive_debate - finalizes debate session without userComment", async () => {
+    mockSpawnOutput = { stdout: "Final synthesis ADR output no comment.", stderr: "", code: 0 };
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          debateId: "interactive-debate-1",
+          action: "finalize"
+        }
+      },
+      id: 53
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.id).toBe(53);
+    expect(response.result.content[0].text).toContain("Финализация дебатов (Сессия: interactive-debate-1)");
+    expect(response.result.content[0].text).toContain("Final synthesis ADR output no comment.");
+  });
+
+  test("run_interactive_debate - throws error when finalizing without session ID", async () => {
+    resetTestState();
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          action: "finalize"
+        }
+      },
+      id: 54
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("No active debate session found");
+  });
+
+  test("run_interactive_debate - throws error when continuing without userComment", async () => {
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          debateId: "interactive-debate-1",
+          action: "next"
+        }
+      },
+      id: 55
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("Missing 'userComment' to continue the debate");
+  });
+
+  test("run_interactive_debate - throws error when neither topic nor debateId is provided", async () => {
+    resetTestState();
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          action: "next"
+        }
+      },
+      id: 56
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("No active debate session");
+  });
+
+  test("run_interactive_debate - handles initialization failure when getNewestConversationId returns null", async () => {
+    mockFiles = [];
+    mockSpawnOutput = { stdout: "Debate round output.", stderr: "", code: 0 };
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "run_interactive_debate",
+        arguments: {
+          topic: "Interactive architecture",
+          action: "next"
+        }
+      },
+      id: 57
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 30));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("Failed to initialize debate conversation ID");
   });
 
   test("startServer connects to mocked StdioServerTransport", async () => {
