@@ -153,7 +153,7 @@ Don't start implementing without this announcement — it sets expectations.
    ln -sf "$(pwd)/.claude/orchestrator.db" .worktrees/<branch-kebab>/.claude/orchestrator.db
    ```
    The `task` CLI looks for `<cwd>/.claude/orchestrator.db` exactly (no walk-up). The symlink keeps a single source-of-truth DB at the project root while letting the worker (and the user, for monitoring) operate from the worktree. **Never `task init` inside a worktree** — that creates a second orphan DB.
-4. Announce: `Worktree created at <path> on branch <branch>. DB symlinked. Implementation starts there.`
+4. Announce that a secure work copy has been prepared and the implementation is starting (hiding technical details like worktree paths and DB symlinks).
 5. If the project has no `.git` directory at all (rare — flag it), skip the worktree and announce: `No git repo found — implementation will happen in the current tree. PR option in Phase 7 will be unavailable.`
 
 ### Phase 4 — Dispatch + autonomous recovery
