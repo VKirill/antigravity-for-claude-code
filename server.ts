@@ -187,39 +187,85 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 // Helper to run agy CLI command, passing prompt via stdin and inheriting environment
-export function runAgy(args: string[], prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
-    const child = spawn("/home/ubuntu/.local/bin/agy", args, {
-      env: {
-        ...process.env,
-        HOME: homeDir,
-        PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<string> {
+  let attempts = 0;
+
+  const execute = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
+      const projectCwd = process.env.PWD || process.cwd();
+
+      const child = spawn("/home/ubuntu/.local/bin/agy", args, {
+        cwd: projectCwd,
+        env: {
+          ...process.env,
+          HOME: homeDir,
+          PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        }
+      });
+      
+      let stdout = "";
+      let stderr = "";
+      let isTimedOut = false;
+
+      // Timeout handler: 3 minutes (180000 ms)
+      const timeoutId = setTimeout(() => {
+        isTimedOut = true;
+        child.kill("SIGKILL");
+        reject(new Error("Process timed out after 3 minutes"));
+      }, 180000);
+
+      // Write prompt to stdin and close it
+      child.stdin.write(prompt);
+      child.stdin.end();
+
+      child.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      child.on("close", (code) => {
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          const trimmedOutput = stdout.trim();
+          if (trimmedOutput === "") {
+            const err = new Error("Received empty response from agy");
+            (err as any).retryable = true;
+            reject(err);
+          } else {
+            resolve(trimmedOutput);
+          }
+        } else {
+          const err = new Error(`agy process exited with code ${code}. Stderr: ${stderr.trim()}`);
+          if (isTimedOut) {
+            (err as any).retryable = true;
+          } else {
+            (err as any).retryable = false; // Do not retry critical process crashes
+          }
+          reject(err);
+        }
+      });
+    });
+  };
+
+  const attemptRun = async (): Promise<string> => {
+    try {
+      return await execute();
+    } catch (err: any) {
+      if (err.retryable && attempts < maxRetries) {
+        attempts++;
+        // Wait 2 seconds before retry
+        await new Promise(r => setTimeout(r, 2000));
+        return attemptRun();
       }
-    });
-    let stdout = "";
-    let stderr = "";
+      throw err;
+    }
+  };
 
-    // Write prompt to stdin and close it
-    child.stdin.write(prompt);
-    child.stdin.end();
-
-    child.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(`agy process exited with code ${code}. Stderr: ${stderr.trim()}`));
-      }
-    });
-  });
+  return attemptRun();
 }
 
 export function getNewestConversationId(): string | null {

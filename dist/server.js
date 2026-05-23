@@ -14233,34 +14233,72 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     ]
   };
 });
-function runAgy(args, prompt) {
-  return new Promise((resolve, reject) => {
-    const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
-    const child = spawn("/home/ubuntu/.local/bin/agy", args, {
-      env: {
-        ...process.env,
-        HOME: homeDir,
-        PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+function runAgy(args, prompt, maxRetries = 2) {
+  let attempts = 0;
+  const execute = () => {
+    return new Promise((resolve, reject) => {
+      const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
+      const projectCwd = process.env.PWD || process.cwd();
+      const child = spawn("/home/ubuntu/.local/bin/agy", args, {
+        cwd: projectCwd,
+        env: {
+          ...process.env,
+          HOME: homeDir,
+          PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        }
+      });
+      let stdout = "";
+      let stderr = "";
+      let isTimedOut = false;
+      const timeoutId = setTimeout(() => {
+        isTimedOut = true;
+        child.kill("SIGKILL");
+        reject(new Error("Process timed out after 3 minutes"));
+      }, 180000);
+      child.stdin.write(prompt);
+      child.stdin.end();
+      child.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+      child.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+      child.on("close", (code) => {
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          const trimmedOutput = stdout.trim();
+          if (trimmedOutput === "") {
+            const err = new Error("Received empty response from agy");
+            err.retryable = true;
+            reject(err);
+          } else {
+            resolve(trimmedOutput);
+          }
+        } else {
+          const err = new Error(`agy process exited with code ${code}. Stderr: ${stderr.trim()}`);
+          if (isTimedOut) {
+            err.retryable = true;
+          } else {
+            err.retryable = false;
+          }
+          reject(err);
+        }
+      });
+    });
+  };
+  const attemptRun = async () => {
+    try {
+      return await execute();
+    } catch (err) {
+      if (err.retryable && attempts < maxRetries) {
+        attempts++;
+        await new Promise((r) => setTimeout(r, 2000));
+        return attemptRun();
       }
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdin.write(prompt);
-    child.stdin.end();
-    child.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    child.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(`agy process exited with code ${code}. Stderr: ${stderr.trim()}`));
-      }
-    });
-  });
+      throw err;
+    }
+  };
+  return attemptRun();
 }
 function getNewestConversationId() {
   const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
