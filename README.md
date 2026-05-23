@@ -4,7 +4,7 @@
 
 # Antigravity for Claude Code
 
-**An advanced Model Context Protocol (MCP) server that integrates Google's Antigravity (Gemini-based coding agent) as a dedicated co-developer, multi-role debater, and code reviewer directly into Claude Code.**
+**Connect Google's Antigravity (Gemini coding agent) to Anthropic's Claude Code. Use it as a local pair programmer, multi-role debater, and code reviewer via the Model Context Protocol (MCP).**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-≥20-43853d.svg)](https://nodejs.org)
@@ -17,17 +17,17 @@
 
 ---
 
-## Overview
+## What is this?
 
-**Antigravity for Claude Code** is an MCP server designed to act as an integration bridge between Anthropic's **Claude Code** (via a custom `dev-orchestrator-test`) and Google's **Antigravity CLI** (`agy`). 
+This MCP server links **Claude Code** (through a custom `dev-orchestrator-test`) to the **Antigravity CLI** (`agy`). 
 
-Instead of spawning standard subagents for heavy programming tasks, this bridge lets Claude Code delegate tasks to `agy` (running Gemini 3.5 Flash/Pro), which processes them using professional coding skills such as `coder-craft` and `orchestrator-workflow`. 
+Instead of spawning standard subagents for heavy programming tasks, Claude Code delegates them to `agy` (running Gemini 3.5 Flash/Pro). The agent loads your local skills (like `coder-craft` and `orchestrator-workflow`), modifies code, runs tests, and outputs results.
 
-Additionally, it equips Claude Code with **multi-agent debate simulations** (deliberations) and **autonomous code reviews/programming advice** to make pair programming with AI truly elite.
+You also get tools for **multi-role AI debates** (deliberations), automated **code reviews**, and fast **programming advice** to speed up development.
 
 ---
 
-## How It Works (Architecture)
+## How it works
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -39,10 +39,9 @@ Additionally, it equips Claude Code with **multi-agent debate simulations** (del
                            │
 ┌──────────────────────────▼───────────────────────────────┐
 │                 Antigravity MCP Server                  │
-│                     (this project)                       │
 └──────────────────────────┬───────────────────────────────┘
                            │
-                  Spawn Shell Command
+                     Executes shell
                            │
 ┌──────────────────────────▼───────────────────────────────┐
 │                 Antigravity CLI (agy)                    │
@@ -52,42 +51,42 @@ Additionally, it equips Claude Code with **multi-agent debate simulations** (del
 
 ---
 
-## Exposed MCP Tools
+## MCP Tools
 
-The server exposes the following tools to any MCP-compatible agent:
+The server registers four main tools:
 
 ### 1. `discuss_with_antigravity`
-A core integration tool. Passes task descriptions (YAML contracts) to Antigravity (`agy`), which applies code changes in a project-local git worktree, runs test suites, and returns results in structured YAML format.
+Passes task descriptions (YAML contracts) to Antigravity (`agy`). The agent creates a local git worktree, writes code, runs test suites, and returns a structured YAML result.
 
 ### 2. `run_debate_deliberation`
-Simulates a multi-role panel discussion (deliberation) about complex technical or business decisions. The debate goes through several rounds:
-* **Optimist** (proposes bold ideas, highlights benefits)
-* **Skeptic** (questions assumptions, lists risks)
-* **Agreer** (finds middle ground, adds constructive details)
-* **Hater** (criticizes aggressively, highlights breaking changes)
-* **Synthesizer** (combines all arguments into a final consensus plan)
+Simulates a multi-role expert panel to discuss architectural or business decisions. The debate goes through key viewpoints:
+* **Optimist**: Proposes bold approaches, shows benefits.
+* **Skeptic**: Highlights risks, questions assumptions.
+* **Agreer**: Finds compromise, suggests fast shortcuts.
+* **Hater**: Looks for critical points of failure, challenges feasibility.
+* **Synthesizer**: Combines all arguments into a final decision record (ADR).
 
 ### 3. `review_code_changes`
-Analyzes git diffs or code snippets for bugs, security issues, performance bottlenecks, and clean-code violations. Returns categorized recommendations:
-* **P0/P1 (Critical)**: Security flaws, leaks, logical bugs.
-* **P2 (Medium/Low)**: Style improvements, refactoring, DRY/SOLID.
+Analyzes git diffs or code snippets for security flaws, resource leaks, and style. Groups findings into:
+* **P0/P1 (Critical)**: Security bugs, memory leaks, invalid logic.
+* **P2 (Standard)**: Clean-code violations, DRY/SOLID refactoring.
 
 ### 4. `get_programming_advice`
-Provides architectural decisions, tech-stack suggestions, or code implementation guides. Works as a fast, non-continuous developer assistant.
+Quick developer helper. Answers technical questions or suggests tech stacks without keeping dialog history.
 
 ---
 
-## Installation & Setup
+## Setup
 
-### 1. Build the MCP Server
+### 1. Build the server
 ```bash
 cd ~/tools/antigravity-for-claude-code
 npm install
 npm run build
 ```
 
-### 2. Configure Claude Code
-Add the server to your `~/.claude.json` configuration file:
+### 2. Add to Claude Code config
+Add this block to your `~/.claude.json` file:
 ```json
 {
   "mcpServers": {
@@ -112,4 +111,4 @@ Add the server to your `~/.claude.json` configuration file:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License. See [LICENSE](LICENSE) for details.
