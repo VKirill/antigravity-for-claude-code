@@ -1,0 +1,14 @@
+{
+  "name": "antigravity-for-claude-code",
+  "version": "1.0.0",
+  "description": "Advanced MCP server bridging Claude Code with Antigravity CLI",
+  "main": "server.ts",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VKirill/antigravity-for-claude-code.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1"
+  }
+}
