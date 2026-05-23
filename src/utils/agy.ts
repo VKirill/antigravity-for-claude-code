@@ -34,12 +34,15 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       child.stdin.write(prompt);
       child.stdin.end();
 
+      child.stdout.setEncoding("utf-8");
+      child.stderr.setEncoding("utf-8");
+
       child.stdout.on("data", (data) => {
-        stdout += data.toString();
+        stdout += data;
       });
 
       child.stderr.on("data", (data) => {
-        stderr += data.toString();
+        stderr += data;
       });
 
       child.on("close", (code) => {
