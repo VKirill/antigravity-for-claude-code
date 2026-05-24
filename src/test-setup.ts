@@ -47,12 +47,14 @@ mock.module("child_process", () => {
       };
 
       const stdout = {
+        setEncoding: mock(() => {}),
         on: (event: string, callback: Function) => {
           if (event === "data") stdoutListeners.push(callback);
         }
       };
 
       const stderr = {
+        setEncoding: mock(() => {}),
         on: (event: string, callback: Function) => {
           if (event === "data") stderrListeners.push(callback);
         }

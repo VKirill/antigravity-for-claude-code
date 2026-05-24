@@ -14761,6 +14761,7 @@ ${r2Output}
 
 `;
       outputMarkdown += prompts.nextSteps(debateConversationId);
+      outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
       sessionState.activeConversationId = debateConversationId;
       return {
         content: [
@@ -14793,6 +14794,7 @@ ${r4Output}
 
 `;
       outputMarkdown += prompts.nextStepsCont;
+      outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
       sessionState.activeConversationId = debateConversationId;
       return {
         content: [

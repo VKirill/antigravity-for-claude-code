@@ -264,6 +264,7 @@ export async function handleRunInteractiveDebate(args: any) {
       outputMarkdown += `## Round 1: [OPTIMIST]\n${r1Output}\n\n`;
       outputMarkdown += `## Round 2: [SKEPTIC]\n${r2Output}\n\n`;
       outputMarkdown += prompts.nextSteps(debateConversationId);
+      outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
 
       // Update active session ID in memory
       sessionState.activeConversationId = debateConversationId;
@@ -305,6 +306,7 @@ export async function handleRunInteractiveDebate(args: any) {
       outputMarkdown += `## Round 3: [AGREER]\n${r3Output}\n\n`;
       outputMarkdown += `## Round 4: [HATER]\n${r4Output}\n\n`;
       outputMarkdown += prompts.nextStepsCont;
+      outputMarkdown += `<!-- active_session_id: ${debateConversationId} -->`;
 
       // Update active session ID in memory
       sessionState.activeConversationId = debateConversationId;

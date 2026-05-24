@@ -32,7 +32,8 @@ describe("debate.ts tool tests", () => {
         name: "run_debate_deliberation",
         arguments: {
           topic: "Implement microfrontends",
-          rounds: 4
+          rounds: 4,
+          language: "ru"
         }
       },
       id: 20
@@ -44,11 +45,11 @@ describe("debate.ts tool tests", () => {
     expect(response.id).toBe(20);
     expect(response.result.isError).toBeUndefined();
     expect(response.result.content[0].text).toContain("Результаты дебатов: Implement microfrontends");
-    expect(response.result.content[0].text).toContain("Стенограмма дебатов");
-    expect(response.result.content[0].text).toContain("Раунд 1: [OPTIMIST]");
-    expect(response.result.content[0].text).toContain("Раунд 2: [SKEPTIC]");
-    expect(response.result.content[0].text).toContain("Раунд 3: [AGREER]");
-    expect(response.result.content[0].text).toContain("Раунд 4: [SYNTHESIZER]");
+    expect(response.result.content[0].text).toContain("Стенограмма дебатов (Transcript)");
+    expect(response.result.content[0].text).toContain("Round 1: [OPTIMIST]");
+    expect(response.result.content[0].text).toContain("Round 2: [SKEPTIC]");
+    expect(response.result.content[0].text).toContain("Round 3: [AGREER]");
+    expect(response.result.content[0].text).toContain("Round 4: [SYNTHESIZER]");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: debate-session -->");
     expect(sessionState.activeConversationId).toBe("debate-session");
   });
@@ -64,7 +65,8 @@ describe("debate.ts tool tests", () => {
         name: "run_debate_deliberation",
         arguments: {
           topic: "Clamping test",
-          rounds: 15 // Should be clamped to 10
+          rounds: 15, // Should be clamped to 10
+          language: "ru"
         }
       },
       id: 21
@@ -73,7 +75,7 @@ describe("debate.ts tool tests", () => {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     const response: any = transport.sentMessages[0];
-    expect(response.result.content[0].text).toContain("Раунд 10: [SYNTHESIZER]");
+    expect(response.result.content[0].text).toContain("Round 10: [SYNTHESIZER]");
   });
 
   test("run_debate_deliberation - handles subprocess failures and returns error response", async () => {
@@ -137,7 +139,8 @@ describe("debate.ts tool tests", () => {
         name: "run_interactive_debate",
         arguments: {
           topic: "Interactive architecture",
-          action: "next"
+          action: "next",
+          language: "ru"
         }
       },
       id: 50
@@ -149,8 +152,8 @@ describe("debate.ts tool tests", () => {
     expect(response.id).toBe(50);
     expect(response.result.isError).toBeUndefined();
     expect(response.result.content[0].text).toContain("Интерактивные дебаты: Interactive architecture");
-    expect(response.result.content[0].text).toContain("## Раунд 1: [OPTIMIST]");
-    expect(response.result.content[0].text).toContain("## Раунд 2: [SKEPTIC]");
+    expect(response.result.content[0].text).toContain("## Round 1: [OPTIMIST]");
+    expect(response.result.content[0].text).toContain("## Round 2: [SKEPTIC]");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: interactive-debate-1 -->");
     expect(sessionState.activeConversationId).toBe("interactive-debate-1");
   });
@@ -166,7 +169,8 @@ describe("debate.ts tool tests", () => {
         arguments: {
           debateId: "interactive-debate-1",
           userComment: "Let's stick to monolith.",
-          action: "next"
+          action: "next",
+          language: "ru"
         }
       },
       id: 51
@@ -176,10 +180,10 @@ describe("debate.ts tool tests", () => {
 
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(51);
-    expect(response.result.content[0].text).toContain("Интерактивные дебаты (Сессия: interactive-debate-1)");
+    expect(response.result.content[0].text).toContain("Финализация дебатов (Сессия: interactive-debate-1)");
     expect(response.result.content[0].text).toContain("### Ваш комментарий как Судьи:\n> Let's stick to monolith.");
-    expect(response.result.content[0].text).toContain("## Раунд 3: [AGREER]");
-    expect(response.result.content[0].text).toContain("## Раунд 4: [HATER]");
+    expect(response.result.content[0].text).toContain("## Round 3: [AGREER]");
+    expect(response.result.content[0].text).toContain("## Round 4: [HATER]");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: interactive-debate-1 -->");
   });
 
@@ -194,7 +198,8 @@ describe("debate.ts tool tests", () => {
         arguments: {
           debateId: "interactive-debate-1",
           userComment: "Final decision is monolith.",
-          action: "finalize"
+          action: "finalize",
+          language: "ru"
         }
       },
       id: 52
@@ -219,7 +224,8 @@ describe("debate.ts tool tests", () => {
         name: "run_interactive_debate",
         arguments: {
           debateId: "interactive-debate-1",
-          action: "finalize"
+          action: "finalize",
+          language: "ru"
         }
       },
       id: 53
