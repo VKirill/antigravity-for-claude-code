@@ -6,6 +6,7 @@ import {
   resetMockState,
   setMockSpawnOutput,
   setMockFiles,
+  setMockReadContent,
   setMockReaddirShouldThrow,
   lastSpawnArgs,
   lastAppendFileSyncPath,
@@ -250,5 +251,60 @@ describe("agy.ts utility tests", () => {
   test("runAgy appends stderr when stdout is empty", async () => {
     setMockSpawnOutput({ stdout: "", stderr: "My custom stderr error", code: 0 });
     await expect(runAgy(["-p"], "hello", 0)).rejects.toThrow("Received empty response from agy. Stderr: My custom stderr error");
+  });
+
+  test("crash monitor aborts early when agy log exceeds the size cap (runaway output)", async () => {
+    process.env.AGY_CRASH_POLL_MS = "20";
+    process.env.AGY_MAX_LOG_BYTES = "1000";
+    // Process never closes on its own — only the crash monitor can settle it.
+    setMockSpawnOutput({ stdout: "", stderr: "", code: 0, dontFireClose: true });
+    setMockFiles([{ name: "cli-20260525_000000.log", mtime: 1000, size: 5000 }]);
+    let error: (Error & { retryable?: boolean; fatalCrash?: boolean }) | undefined;
+    try {
+      await runAgy(["--print"], "review this", 0);
+    } catch (e) {
+      error = e as typeof error;
+    }
+    expect(error).toBeDefined();
+    expect(error!.message).toContain("agy executor crashed early");
+    expect(error!.message).toContain("runaway tool output");
+    expect(error!.retryable).toBe(false);
+    expect(error!.fatalCrash).toBe(true);
+    delete process.env.AGY_CRASH_POLL_MS;
+    delete process.env.AGY_MAX_LOG_BYTES;
+  });
+
+  test("crash monitor aborts early when a fatal marker appears in the agy log", async () => {
+    process.env.AGY_CRASH_POLL_MS = "20";
+    process.env.AGY_MAX_LOG_BYTES = "1000000"; // high cap -> exercise the marker-scan branch
+    const logContent = "I0525 info line\nE0525 agent executor error: trajectory converted to zero chat messages\n";
+    setMockSpawnOutput({ stdout: "", stderr: "", code: 0, dontFireClose: true });
+    setMockReadContent(logContent);
+    setMockFiles([{ name: "cli-20260525_000001.log", mtime: 2000, size: Buffer.byteLength(logContent, "utf-8") }]);
+    let error: (Error & { retryable?: boolean; fatalCrash?: boolean }) | undefined;
+    try {
+      await runAgy(["--print"], "review this", 0);
+    } catch (e) {
+      error = e as typeof error;
+    }
+    expect(error).toBeDefined();
+    expect(error!.message).toContain("fatal marker in agy log");
+    expect(error!.message).toContain("trajectory converted to zero chat messages");
+    expect(error!.retryable).toBe(false);
+    expect(error!.fatalCrash).toBe(true);
+    delete process.env.AGY_CRASH_POLL_MS;
+    delete process.env.AGY_MAX_LOG_BYTES;
+  });
+
+  test("crash monitor does NOT fire on a healthy run (clean exit wins)", async () => {
+    process.env.AGY_CRASH_POLL_MS = "20";
+    process.env.AGY_MAX_LOG_BYTES = "1000";
+    // Small/healthy log, normal close — monitor must stay silent.
+    setMockSpawnOutput({ stdout: "all good", stderr: "", code: 0 });
+    setMockFiles([{ name: "cli-20260525_000002.log", mtime: 3000, size: 200 }]);
+    const result = await runAgy(["--print"], "review this");
+    expect(result).toBe("all good");
+    delete process.env.AGY_CRASH_POLL_MS;
+    delete process.env.AGY_MAX_LOG_BYTES;
   });
 });

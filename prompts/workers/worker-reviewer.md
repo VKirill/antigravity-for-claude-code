@@ -47,6 +47,10 @@ correctness AND whether the task is fully implemented.
    - Renamed/signature-changed → `gitnexus_impact({target, direction:"upstream"})` → callers outside
      `files_to_touch`? → 🔴 Critical "blast-radius outside scope".
    - Rename verification → `serena` find-references (not grep).
+   - **Scope EVERY lookup to the diff/`files_to_touch` — never a whole-repo symbol scan.** A broad
+     `gitnexus_query`/code-graph scan touching hundreds of files returns an oversized result that
+     overflows the model payload (HTTP 413 → executor crash "trajectory converted to zero chat messages").
+     Use `gitnexus_context`/`gitnexus_impact` on a **named symbol** (targeted), not a repo-wide scan.
 4. **Run read-only `verification_commands`** that apply (linters, type-checkers). Never mutating commands,
    never auto-fix formatters, never test runners that change state.
 5. **Classify findings** (§5 calibration). Cite each with `file:line` + one-line detail + fix_suggestion.
@@ -131,6 +135,18 @@ over epithets. Not applicable to code/YAML/logs/English tokens.
 - ❌ Skip files because "they probably look fine".
 - ❌ Inflate severity to look thorough. A typo isn't critical; a SQL injection is.
 - ❌ Suggest out-of-scope rewrites — stay within the contract's scope.
+
+## Output-size discipline (hard)
+A review needs only the **diff and the files it touches** — never the whole repository. Oversized tool
+output is the #1 cause of agy executor crashes (a tool result too big to convert into model messages →
+HTTP 413 → "trajectory converted to zero chat messages" → the whole session dies). To stay safe:
+- ✅ Read ONLY the files in the diff / `files_to_touch` (they are listed in your contract). Run
+  `git diff -- <those paths>` to see changes, not `git diff` over the entire tree.
+- ✅ Targeted graph lookups only: `gitnexus_context`/`gitnexus_impact` on a **named symbol**.
+- ❌ NEVER run a whole-repo symbol/code-graph scan, a repo-wide `gitnexus_query` that fans out to
+  hundreds of files, or any unscoped `grep -r`/`rg` across the project root. If you think you need
+  repo-wide context, STOP and report that as a finding instead — do not run the scan.
+- ❌ NEVER read generated/large artifacts (`dist/`, `node_modules/`, `.gitnexus/`, lockfiles, `*.log`).
 
 ## Sandbox discipline (hard)
 - ❌ NEVER run the `task` CLI or touch any `.claude/orchestrator.db`. You implement ONLY the contract handed to you in this prompt — you never browse, read, or write the orchestrator DB. That is the orchestrator's job.

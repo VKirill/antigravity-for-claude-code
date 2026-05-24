@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { readdirSync, statSync } from "fs";
+import { readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { logLifecycleEvent } from "./observability.ts";
@@ -25,6 +25,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       let isFinished = false;
       let timeoutId: any = undefined;
       let fallbackId: any = undefined;
+      let monitorId: ReturnType<typeof setInterval> | undefined = undefined;
       const attempt = attempts + 1;
       const startTime = Date.now();
 
@@ -38,6 +39,10 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         if (fallbackId) {
           clearTimeout(fallbackId);
           fallbackId = undefined;
+        }
+        if (monitorId) {
+          clearInterval(monitorId);
+          monitorId = undefined;
         }
         logLifecycleEvent("agy.done", {
           attempt,
@@ -58,6 +63,10 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         if (fallbackId) {
           clearTimeout(fallbackId);
           fallbackId = undefined;
+        }
+        if (monitorId) {
+          clearInterval(monitorId);
+          monitorId = undefined;
         }
         if (isTimedOut) {
           logLifecycleEvent("agy.timeout", {
@@ -102,6 +111,90 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       let stdout = "";
       let stderr = "";
       let isTimedOut = false;
+
+      // Crash monitor: agy can balloon its own log with oversized tool output
+      // (a tool result too large to convert into model messages → HTTP 413 →
+      // "trajectory converted to zero chat messages"). The executor then idles
+      // uselessly until --print-timeout. Detect that early via the agy CLI log
+      // (runaway size OR a fatal marker) and abort so recovery re-dispatches fast.
+      if (process.env.AGY_CRASH_MONITOR !== "0" && spawnArgs.includes("--print")) {
+        const maxLogBytes = Number(process.env.AGY_MAX_LOG_BYTES) || 25 * 1024 * 1024;
+        const pollMs = Number(process.env.AGY_CRASH_POLL_MS) || 3000;
+        const markers = (process.env.AGY_FATAL_MARKERS ||
+          "trajectory converted to zero chat messages,agent executor error")
+          .split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+        const logDir = join(homeDir, ".gemini/antigravity-cli/log");
+        const tailScanBytes = 32 * 1024;
+        let logFile: string | null = null;
+        let lastPos = 0;
+
+        const fireFatal = (reason: string) => {
+          logLifecycleEvent("agy.fatal", {
+            attempt,
+            durationMs: Date.now() - startTime,
+            reason,
+          });
+          if (child.pid) {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch (e) {
+              // process group already gone — nothing to kill
+            }
+          }
+          const err: Error & { retryable?: boolean; fatalCrash?: boolean } =
+            new Error(`agy executor crashed early: ${reason}. Aborted to avoid hanging until timeout.`);
+          err.retryable = false;
+          err.fatalCrash = true;
+          safeReject(err);
+        };
+
+        monitorId = setInterval(() => {
+          if (isFinished) return;
+          try {
+            if (!logFile) {
+              let newestName: string | null = null;
+              let newestTime = -1;
+              for (const f of readdirSync(logDir)) {
+                if (!f.startsWith("cli-") || !f.endsWith(".log")) continue;
+                const t = statSync(join(logDir, f)).mtimeMs;
+                if (t > newestTime) {
+                  newestTime = t;
+                  newestName = f;
+                }
+              }
+              if (!newestName) return;
+              logFile = join(logDir, newestName);
+              lastPos = 0;
+            }
+            const size = statSync(logFile).size;
+            if (size >= maxLogBytes) {
+              fireFatal(`agy log exceeded ${Math.round(maxLogBytes / 1048576)}MB (runaway tool output)`);
+              return;
+            }
+            if (size > lastPos) {
+              const start = Math.max(lastPos, size - tailScanBytes);
+              const len = size - start;
+              const buf = Buffer.alloc(len);
+              const fd = openSync(logFile, "r");
+              try {
+                readSync(fd, buf, 0, len, start);
+              } finally {
+                closeSync(fd);
+              }
+              lastPos = size;
+              const chunk = buf.toString("utf-8");
+              for (const m of markers) {
+                if (chunk.includes(m)) {
+                  fireFatal(`fatal marker in agy log: "${m}"`);
+                  return;
+                }
+              }
+            }
+          } catch (e) {
+            // soft-fail: the crash monitor must never break a healthy run
+          }
+        }, pollMs);
+      }
 
       // Timeout handler
       timeoutId = setTimeout(() => {

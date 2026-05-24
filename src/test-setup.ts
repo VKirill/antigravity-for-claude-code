@@ -14,7 +14,8 @@ export let mockSpawnOutput: {
   closeDelayMs?: number;
   pid?: number;
 } = { stdout: "Hello from mock agy", stderr: "", code: 0 };
-export let mockFiles: { name: string; mtime: number }[] = [];
+export let mockFiles: { name: string; mtime: number; size?: number }[] = [];
+export let mockReadContent = "";
 export let lastSpawnArgs: string[] = [];
 export let lastSpawnStdin = "";
 export let mockReaddirShouldThrow = false;
@@ -35,6 +36,7 @@ export let appendFileSyncCalls: { filePath: string; data: string }[] = [];
 // Setters to allow test files to modify the state in ESM
 export function setMockSpawnOutput(val: typeof mockSpawnOutput) { mockSpawnOutput = val; }
 export function setMockFiles(val: typeof mockFiles) { mockFiles = val; }
+export function setMockReadContent(val: string) { mockReadContent = val; }
 export function setLastSpawnArgs(val: typeof lastSpawnArgs) { lastSpawnArgs = val; }
 export function setLastSpawnStdin(val: string) { lastSpawnStdin = val; }
 export function setMockReaddirShouldThrow(val: boolean) { mockReaddirShouldThrow = val; }
@@ -49,6 +51,7 @@ export function setLastAppendFileSyncData(val: string) { lastAppendFileSyncData 
 export function resetMockState() {
   mockSpawnOutput = { stdout: "Hello from mock agy", stderr: "", code: 0 };
   mockFiles = [];
+  mockReadContent = "";
   lastSpawnArgs = [];
   lastSpawnStdin = "";
   mockReaddirShouldThrow = false;
@@ -174,8 +177,18 @@ mock.module("fs", () => {
       return {
         mtime: {
           getTime: () => matched ? matched.mtime : 0
-        }
+        },
+        mtimeMs: matched ? matched.mtime : 0,
+        size: matched && matched.size !== undefined ? matched.size : 0,
       };
+    },
+    openSync: (filePath: string) => 1,
+    closeSync: (fd: number) => {},
+    readSync: (fd: number, buffer: Buffer, offset: number, length: number, position: number) => {
+      const data = Buffer.from(mockReadContent, "utf-8");
+      const slice = data.subarray(position, position + length);
+      slice.copy(buffer, offset);
+      return slice.length;
     },
     readFileSync: (filePath: string, encoding: string) => {
       return mockAuditLogContent;
