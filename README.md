@@ -148,7 +148,8 @@ Add it to your `~/.claude.json` (use the **absolute path** to your clone):
 ```
 > **Two run modes.** The config above runs the built bundle (`node dist/index.js`). Alternatively point
 > `command` at `run-server.sh` — it runs the server straight from `src/` via Bun (**no build needed**) and
-> isolates each project's `agy` state under `<project>/.gemini_mcp/`. Either way prompts resolve from the
+> isolates each project's `agy` state under `~/.cache/antigravity-mcp/<project-hash>/` (out of the project
+> tree, so the agent never reads its own logs/cache back into context). Either way prompts resolve from the
 > repo `prompts/` folder automatically (override with `ANTIGRAVITY_PROMPTS_DIR`).
 
 ### 3. Install the orchestrator agent
