@@ -2,6 +2,7 @@ import { getRolePreset } from "../config.ts";
 import { sessionState } from "../state.ts";
 import { runAgy, getNewestConversationId } from "../utils/agy.ts";
 import { captureGitFiles, buildFooter } from "../utils/observability.ts";
+import { loadPrompt } from "../utils/prompts.ts";
 
 export async function handleDiscussWithAntigravity(args: any) {
   const prompt = String(args?.prompt || "");
@@ -21,34 +22,51 @@ export async function handleDiscussWithAntigravity(args: any) {
     conversationIdToUse = sessionState.activeConversationId;
   }
 
+  const worker = args?.worker ? String(args.worker) : null;
+  const skills = Array.isArray(args?.skills) ? args.skills.map(String) : [];
+  const skillsStr = skills.join(", ");
+
   let promptToSend = prompt;
 
-  // If it's a new conversation, inject system instructions/roles
-  if (!conversationIdToUse) {
-    const selectedRole = args?.role ? String(args.role) : sessionState.pendingRole;
-    const selectedSystemPrompt = args?.systemPrompt ? String(args.systemPrompt) : sessionState.pendingSystemPrompt;
+  if (worker) {
+    try {
+      const wtext = loadPrompt(`workers/${worker}.md`, { skills: skillsStr });
+      promptToSend = `${wtext}\n\n---\n\n${prompt}`;
+    } catch (e) {
+      return { content: [{ type: "text", text: `Error: worker prompt not found: ${worker}` }], isError: true };
+    }
+  } else {
+    // If it's a new conversation, inject system instructions/roles
+    if (!conversationIdToUse) {
+      const selectedRole = args?.role ? String(args.role) : sessionState.pendingRole;
+      const selectedSystemPrompt = args?.systemPrompt ? String(args.systemPrompt) : sessionState.pendingSystemPrompt;
 
-    let systemPromptText = "";
-    if (selectedRole) {
-      const preset = getRolePreset(selectedRole);
-      if (preset) {
-        systemPromptText = preset;
+      let systemPromptText = "";
+      if (selectedRole) {
+        const preset = getRolePreset(selectedRole);
+        if (preset) {
+          systemPromptText = preset;
+        }
       }
-    }
 
-    if (selectedSystemPrompt) {
-      systemPromptText = systemPromptText
-        ? `${systemPromptText}\n\nДополнительные системные инструкции:\n${selectedSystemPrompt}`
-        : selectedSystemPrompt;
-    }
+      if (selectedSystemPrompt) {
+        systemPromptText = systemPromptText
+          ? `${systemPromptText}\n\nДополнительные системные инструкции:\n${selectedSystemPrompt}`
+          : selectedSystemPrompt;
+      }
 
-    if (systemPromptText) {
-      promptToSend = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${systemPromptText}]\n\n${prompt}`;
-    }
+      if (skills.length > 0 && systemPromptText) {
+        systemPromptText = `${systemPromptText}\n\nЗагрузи эти скиллы перед работой (прочти SKILL.md каждого): ${skillsStr}`;
+      }
 
-    // Clear pending configurations as they are now consumed
-    sessionState.pendingRole = null;
-    sessionState.pendingSystemPrompt = null;
+      if (systemPromptText) {
+        promptToSend = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${systemPromptText}]\n\n${prompt}`;
+      }
+
+      // Clear pending configurations as they are now consumed
+      sessionState.pendingRole = null;
+      sessionState.pendingSystemPrompt = null;
+    }
   }
 
   const cmdArgs = ["--dangerously-skip-permissions", "--print"];

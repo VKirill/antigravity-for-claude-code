@@ -28,7 +28,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "discuss_with_antigravity",
-        description: "Engage in a multi-turn deliberative debate or discussion session with Antigravity (agy). The server automatically remembers the active conversation history unless reset. You can pass systemPrompt/role parameters to configure the persona when starting a new discussion thread.",
+        description: "Engage in a multi-turn deliberative debate or discussion session with Antigravity (agy). The server automatically remembers the active conversation history unless reset. You can pass systemPrompt/role or worker/skills parameters to configure the persona/worker instructions when starting a new discussion thread or executing worker tasks.",
         inputSchema: {
           type: "object",
           properties: {
@@ -48,6 +48,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "Optional preset role for Antigravity: 'designer', 'copywriter', 'programmer', 'architect' (only applied when starting a new session).",
               enum: ["designer", "copywriter", "programmer", "architect"],
+            },
+            worker: {
+              type: "string",
+              description: "Optional worker instruction file under prompts/workers/ (e.g. 'worker-coder'). Its {{skills}} placeholder is filled from `skills`. When set, the full instruction is prepended and the role preset is skipped.",
+            },
+            skills: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+              description: "Skills the worker must load (read each SKILL.md), injected into the worker instruction's {{skills}} placeholder.",
             },
           },
           required: ["prompt"],

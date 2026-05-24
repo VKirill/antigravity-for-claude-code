@@ -364,4 +364,75 @@ describe("discuss.ts tool tests", () => {
     expect(text).toContain("<!-- active_session_id: session-obs -->");
     expect(text).toMatch(/<!-- agy: \d+\.\ds \| files_changed: src\/tools\/discuss\.ts, src\/utils\/observability\.ts -->/);
   });
+
+  test("discuss_with_antigravity - worker: 'worker-coder' + skills: ['coder-craft', 'typescript']", async () => {
+    setMockFiles([{ name: "session-worker.pb", mtime: 1000 }]);
+    setMockSpawnOutput({ stdout: "Worker response", stderr: "", code: 0 });
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: {
+          prompt: "Write some code",
+          worker: "worker-coder",
+          skills: ["coder-craft", "typescript"]
+        }
+      },
+      id: 20
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(lastSpawnStdin).toContain("coder-worker");
+    expect(lastSpawnStdin).toContain("coder-craft, typescript");
+    expect(lastSpawnStdin).not.toContain("{{skills}}");
+    expect(lastSpawnStdin).toContain("---\n\nWrite some code");
+  });
+
+  test("discuss_with_antigravity - worker: 'does-not-exist'", async () => {
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: {
+          prompt: "Write some code",
+          worker: "does-not-exist"
+        }
+      },
+      id: 21
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const response: any = transport.sentMessages[0];
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("worker prompt not found");
+  });
+
+  test("discuss_with_antigravity - skills: ['zod'] + role: 'programmer' (no worker)", async () => {
+    setMockFiles([{ name: "session-role-skills.pb", mtime: 1000 }]);
+    setMockSpawnOutput({ stdout: "Programmer response", stderr: "", code: 0 });
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: {
+          prompt: "Implement schema validation",
+          role: "programmer",
+          skills: ["zod"]
+        }
+      },
+      id: 22
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(lastSpawnStdin).toContain("Загрузи эти скиллы");
+    expect(lastSpawnStdin).toContain("zod");
+  });
 });
