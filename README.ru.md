@@ -129,8 +129,8 @@
 ```bash
 git clone https://github.com/VKirill/antigravity-for-claude-code.git
 cd antigravity-for-claude-code
-bun install        # или: npm install
-bun run build      # компиляция src/ -> dist/ (под Node)
+bun install        # или: npm install — запускает `prepare`, который сам собирает dist/
+# (dist/ генерируется и НЕ коммитится; пересобрать в любой момент: bun run build)
 ```
 
 ### 2. Подключение сервера к Claude Code
@@ -146,7 +146,10 @@ bun run build      # компиляция src/ -> dist/ (под Node)
   }
 }
 ```
-> Хотите запускать из исходников с изолированным конфигом? Используйте `run-server.sh` — он направляет дочерний `agy` в отдельный `$HOME` и запускает сервер через Bun.
+> **Два режима запуска.** Конфиг выше запускает собранный бандл (`node dist/index.js`). Либо укажите в
+> `command` путь к `run-server.sh` — он запускает сервер прямо из `src/` через Bun (**сборка не нужна**) и
+> изолирует состояние `agy` каждого проекта в `<project>/.gemini_mcp/`. В обоих случаях промпты
+> подхватываются из папки `prompts/` репозитория автоматически (переопределяется `ANTIGRAVITY_PROMPTS_DIR`).
 
 ### 3. Установка агента-оркестратора
 ```bash

@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir ./dist --target node",
+    "prepare": "bun run build",
     "test": "bun test",
     "install-hooks": "node install-hooks.cjs"
   },

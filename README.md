@@ -129,8 +129,8 @@ Every `discuss`/`programming` response also carries a small footer with the call
 ```bash
 git clone https://github.com/VKirill/antigravity-for-claude-code.git
 cd antigravity-for-claude-code
-bun install        # or: npm install
-bun run build      # compiles src/ -> dist/ (Node target)
+bun install        # or: npm install — runs `prepare` which builds dist/ automatically
+# (dist/ is generated, NOT committed; rebuild any time with: bun run build)
 ```
 
 ### 2. Register the server in Claude Code
@@ -146,7 +146,10 @@ Add it to your `~/.claude.json` (use the **absolute path** to your clone):
   }
 }
 ```
-> Prefer running from source with an isolated config? Use `run-server.sh` (it points the spawned `agy` at a dedicated `$HOME` and runs the server via Bun).
+> **Two run modes.** The config above runs the built bundle (`node dist/index.js`). Alternatively point
+> `command` at `run-server.sh` — it runs the server straight from `src/` via Bun (**no build needed**) and
+> isolates each project's `agy` state under `<project>/.gemini_mcp/`. Either way prompts resolve from the
+> repo `prompts/` folder automatically (override with `ANTIGRAVITY_PROMPTS_DIR`).
 
 ### 3. Install the orchestrator agent
 ```bash
