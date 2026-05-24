@@ -2,7 +2,18 @@ import { mock } from "bun:test";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 
 // Mock mutable states
-export let mockSpawnOutput = { stdout: "Hello from mock agy", stderr: "", code: 0 };
+export let mockSpawnOutput: {
+  stdout: string;
+  stderr: string;
+  code: number;
+  dontFireClose?: boolean;
+  fireExit?: boolean;
+  exitCode?: number;
+  exitSignal?: string;
+  exitDelayMs?: number;
+  closeDelayMs?: number;
+  pid?: number;
+} = { stdout: "Hello from mock agy", stderr: "", code: 0 };
 export let mockFiles: { name: string; mtime: number }[] = [];
 export let lastSpawnArgs: string[] = [];
 export let lastSpawnStdin = "";
@@ -30,7 +41,6 @@ export function resetMockState() {
   mockExistsSyncResult = false;
 }
 
-// Register Mocks for child_process
 mock.module("child_process", () => {
   return {
     spawn: (cmd: string, args: string[], options: any) => {
@@ -50,17 +60,22 @@ mock.module("child_process", () => {
         setEncoding: mock(() => {}),
         on: (event: string, callback: Function) => {
           if (event === "data") stdoutListeners.push(callback);
-        }
+        },
+        destroy: mock(() => {}),
       };
 
       const stderr = {
         setEncoding: mock(() => {}),
         on: (event: string, callback: Function) => {
           if (event === "data") stderrListeners.push(callback);
-        }
+        },
+        destroy: mock(() => {}),
       };
 
+      const pid = mockSpawnOutput.pid !== undefined ? mockSpawnOutput.pid : 12345;
+
       const proc: any = {
+        pid,
         stdin,
         stdout,
         stderr,
@@ -71,16 +86,33 @@ mock.module("child_process", () => {
       };
 
       // Fire events asynchronously to simulate the process running
-      setTimeout(() => {
-        if (mockSpawnOutput.stdout) {
+      const closeDelay = mockSpawnOutput.closeDelayMs !== undefined ? mockSpawnOutput.closeDelayMs : 5;
+      const exitDelay = mockSpawnOutput.exitDelayMs !== undefined ? mockSpawnOutput.exitDelayMs : (closeDelay - 1 >= 0 ? closeDelay - 1 : 0);
+
+      if (mockSpawnOutput.stdout) {
+        setTimeout(() => {
           stdoutListeners.forEach(cb => cb(Buffer.from(mockSpawnOutput.stdout)));
-        }
-        if (mockSpawnOutput.stderr) {
+        }, 1);
+      }
+      if (mockSpawnOutput.stderr) {
+        setTimeout(() => {
           stderrListeners.forEach(cb => cb(Buffer.from(mockSpawnOutput.stderr)));
-        }
-        const closeListeners = listeners["close"] || [];
-        closeListeners.forEach(cb => cb(mockSpawnOutput.code));
-      }, 5);
+        }, 1);
+      }
+
+      if (mockSpawnOutput.fireExit || mockSpawnOutput.dontFireClose) {
+        setTimeout(() => {
+          const exitListeners = listeners["exit"] || [];
+          exitListeners.forEach(cb => cb(mockSpawnOutput.exitCode !== undefined ? mockSpawnOutput.exitCode : mockSpawnOutput.code, mockSpawnOutput.exitSignal || null));
+        }, exitDelay);
+      }
+
+      if (!mockSpawnOutput.dontFireClose) {
+        setTimeout(() => {
+          const closeListeners = listeners["close"] || [];
+          closeListeners.forEach(cb => cb(mockSpawnOutput.code));
+        }, closeDelay);
+      }
 
       return proc;
     }

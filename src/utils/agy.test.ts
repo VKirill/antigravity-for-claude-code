@@ -39,6 +39,84 @@ describe("agy.ts utility tests", () => {
     await expect(runAgy(["-p"], "hello")).rejects.toThrow("agy process exited with code 1");
   });
 
+  test("runAgy exit-fallback resolves with buffered stdout when close does not fire", async () => {
+    process.env.AGY_EXIT_FALLBACK_MS = "50";
+    setMockSpawnOutput({
+      stdout: "Fallback output",
+      stderr: "",
+      code: 0,
+      dontFireClose: true,
+      fireExit: true,
+      exitDelayMs: 5,
+    });
+    const result = await runAgy(["-p"], "hello");
+    expect(result).toBe("Fallback output");
+    delete process.env.AGY_EXIT_FALLBACK_MS;
+  });
+
+  test("runAgy exit-fallback rejects retryable empty response when buffered stdout is empty", async () => {
+    process.env.AGY_EXIT_FALLBACK_MS = "50";
+    setMockSpawnOutput({
+      stdout: "",
+      stderr: "",
+      code: 0,
+      dontFireClose: true,
+      fireExit: true,
+      exitDelayMs: 5,
+    });
+    await expect(runAgy(["-p"], "hello", 0)).rejects.toThrow("Received empty response from agy");
+    delete process.env.AGY_EXIT_FALLBACK_MS;
+  });
+
+  test("runAgy exit-fallback rejects non-retryable on a non-zero exit code", async () => {
+    process.env.AGY_EXIT_FALLBACK_MS = "50";
+    setMockSpawnOutput({
+      stdout: "partial",
+      stderr: "",
+      code: 1,
+      dontFireClose: true,
+      fireExit: true,
+      exitCode: 1,
+      exitDelayMs: 5,
+    });
+    let error: any;
+    try {
+      await runAgy(["-p"], "hello", 0);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeDefined();
+    expect(error.message).toContain("agy process exited with code 1");
+    expect(error.retryable).toBe(false);
+    delete process.env.AGY_EXIT_FALLBACK_MS;
+  });
+
+  test("runAgy timeout rejects promptly and is non-retryable", async () => {
+    process.env.AGY_TIMEOUT_MS = "50";
+    setMockSpawnOutput({
+      stdout: "delayed output",
+      stderr: "",
+      code: 0,
+      closeDelayMs: 500,
+    });
+
+    const startTime = Date.now();
+    let error: any;
+    try {
+      await runAgy(["-p"], "hello", 2);
+    } catch (e) {
+      error = e;
+    }
+
+    const duration = Date.now() - startTime;
+    expect(duration).toBeLessThan(400);
+    expect(error).toBeDefined();
+    expect(error.message).toBe("Process timed out after 0.05 seconds");
+    expect(error.retryable).toBe(false);
+
+    delete process.env.AGY_TIMEOUT_MS;
+  });
+
   test("getNewestConversationId returns newest ID from files", () => {
     setMockFiles([
       { name: "conv-1.pb", mtime: 1000 },
