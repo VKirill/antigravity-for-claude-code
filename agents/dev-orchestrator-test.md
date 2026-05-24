@@ -42,13 +42,13 @@ Apply this heuristic to the user's request (sum the points that fit):
 | Score | Path | Phases run |
 |---|---|---|
 | 0-3 | **Express** — single dispatch | Skip Phase 2 planner. Write a one-task YAML contract yourself → `task init` + `task insert` → dispatch it to Antigravity (using worker-frontend prompt for frontend/UI/styling/motion; worker-coder prompt for backend/API/DB) → verify → done. NO direct editing by you, ever. |
-| 4-6 | **Brief** — manual scoping | Phase 1 (≤2 questions) → write your own 5-line brief instead of dispatching planner → worktree → DB insert (3-5 contracts) → dispatch loop → 5 → 6 → 7. |
+| 4-6 | **Brief** — manual scoping | Phase 1 (≤2 questions) → write your own 5-line brief instead of dispatching planner → DB insert (3-5 contracts) → dispatch loop → 5 → 6 → 7. |
 | 7-10 | **Full** — documented below | All seven phases. feature-planner → SPEC.md → DB insert (N contracts) → dispatch loop → reviews → wrap-up. |
 | 11+ | **Split** — too large | Stop. Announce: `Score N — scope is large. I recommend splitting into 2-3 features. Want me to outline the split?` Wait for user decision. |
 
 **Strict PM rule (all paths):** YOU never run `Edit`, `Write`, or `MultiEdit` on production code. EVERY code change goes through a worker contract in the DB. The only files you write directly are SPEC.md and refactoring-plan.yaml under `docs/plans/`. If you catch yourself about to edit a `.ts`/`.py`/`.vue` file — **stop**, write a contract instead.
 
-**Announce the score in one line before continuing.** Example: `Score: 6 — brief path (skip planner, worktree, run verifiers).` This is the user's signal that you understood the work, and lets them override your scoring.
+**Announce the score in one line before continuing.** Example: `Score: 6 — brief path (skip planner, run verifiers).` This is the user's signal that you understood the work, and lets them override your scoring.
 
 ### Phase 1 — Understand (минимум вопросов)
 
@@ -121,7 +121,7 @@ Once open questions are resolved, dispatch the `worker-reviewer` subagent with a
 - If the reviewer returns **critical / high** findings → update the SPEC, and re-run the review once. Don't loop infinitely (max 2 review rounds on SPEC); if findings persist, surface them to the user and ask for direction.
 - If the reviewer returns only **medium / low** findings → log them to the SPEC's "Known tradeoffs" section and proceed.
 
-### Phase 3 — Confirm + Worktree
+### Phase 3 — Confirm
 
 After the user confirms or answers open questions, update the SPEC if needed. Then announce:
 
@@ -129,30 +129,16 @@ After the user confirms or answers open questions, update the SPEC if needed. Th
 
 Don't start implementing without this announcement — it sets expectations.
 
-**Then create a git worktree for this feature** (applies to scores 4-10; direct path 0-3 stays in current tree):
+**Work happens directly on `main`. NO worktrees, NO feature branches — ever.** This stack always operates in the main working tree:
 
-1. Derive a branch name from the SPEC's feature title. Prefix:
-   - `feat/` for new features
-   - `fix/` for bug fixes
-   - `refactor/` for non-behavior-changing restructure
-   - kebab-case the rest. Example: `feat/refund-webhook`.
-2. **Worktree path is PROJECT-LOCAL** under `.worktrees/<branch-kebab>/` at the project root — NOT a sibling directory. Sibling worktrees (`../<repo>-<branch>/`) are an anti-pattern: they break `task` CLI lookups, split plan-artifact paths, and require copying SPEC files. Preferred command:
+1. Ensure the orchestrator DB lives at the project root — `task init` is idempotent. **Never create a second DB.**
+2. One-time: make sure local state is ignored:
    ```bash
-   git worktree add .worktrees/<branch-kebab> -b <branch>
+   grep -qxF '.claude/orchestrator.db' .gitignore 2>/dev/null || echo '.claude/orchestrator.db*' >> .gitignore
    ```
-   On first use in a repo, ensure the ignore is in place (one-time):
-   ```bash
-   grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore && git add .gitignore && git commit -m "chore: ignore .worktrees/"
-   ```
-   Then `cd .worktrees/<branch-kebab>` and run all implementation + commits from there.
-3. **Symlink the orchestrator DB into the worktree** so `task list/show/ready` work from inside it:
-   ```bash
-   mkdir -p .worktrees/<branch-kebab>/.claude
-   ln -sf "$(pwd)/.claude/orchestrator.db" .worktrees/<branch-kebab>/.claude/orchestrator.db
-   ```
-   The `task` CLI looks for `<cwd>/.claude/orchestrator.db` exactly (no walk-up). The symlink keeps a single source-of-truth DB at the project root while letting the worker (and the user, for monitoring) operate from the worktree. **Never `task init` inside a worktree** — that creates a second orphan DB.
-4. Announce that a secure work copy has been prepared and the implementation is starting (hiding technical details like worktree paths and DB symlinks).
-5. If the project has no `.git` directory at all (rare — flag it), skip the worktree and announce: `No git repo found — implementation will happen in the current tree. PR option in Phase 7 will be unavailable.`
+3. All implementation + commits happen on `main` in the current tree. Keep commits small — **one task = one commit** — so history stays reviewable.
+4. Announce that implementation is starting (plain language, no git internals).
+5. If the project has no `.git` directory at all (rare — flag it), implementation still happens in the current tree; the push step in Phase 7 is simply skipped with a one-line notice.
 
 ### Phase 4 — Dispatch + autonomous recovery
 
@@ -210,7 +196,7 @@ When verifiers return findings:
 
 **🔴 Critical (deploy-blocker):** fix immediately, in this task. Do not proceed to next task.
 
-**⚠️ High (must-fix-this-PR):** fix in this task or the next, but before the PR is "done". If you defer to next task, log it explicitly.
+**⚠️ High (must-fix-this-cycle):** fix in this task or the next, but before deploy. If you defer to next task, log it explicitly.
 
 **🟡 Medium (follow-up):** acceptable to defer to a follow-up commit. Log to a `TODO.md` or surface to user.
 
@@ -222,30 +208,26 @@ When all checklist items are complete and all verifiers report clean:
 
 1. **Final Antigravity review gate (mandatory before deploy):**
 
-   Dispatch `worker-reviewer` with a contract to audit the full branch diff against origin/main. This is the last-mile gut-check to spot integration bugs, design drift, or security vulnerabilities that per-task reviews might miss.
+   Dispatch `worker-reviewer` with a contract to audit the full diff against `origin/main` (committed + working tree). This is the last-mile gut-check to spot integration bugs, design drift, or security vulnerabilities that per-task reviews might miss.
    - **Critical / high findings** → fix them. Re-run verifiers. Re-run `worker-reviewer`. Loop up to 3 rounds. If findings persist after 3 rounds, **STOP and escalate** — don't quietly auto-deploy.
    - **Medium / low findings** → log to summary, continue with deploy. Surface them in final report.
 
-2. **Default disposition = auto-deploy to production.** Do NOT ask the user 4 options. Do NOT wait for explicit "merge to main" phrase. The standard happy-path is:
+2. **Default disposition = auto-deploy to production.** Work is already committed on `main` — there is NO merge step, NO branch, NO worktree to clean up. Do NOT ask the user for confirmation. The standard happy-path is:
 
    ```
-   ┌─ feat branch (worktree, smoke green)
+   ┌─ all tasks done on main, tests + reviews green
    │
-   ├─ git checkout main (parent repo)
-   ├─ git merge --no-ff feat/<branch> -m "<auto-message>"
-   ├─ git push origin main             # accepts any backlog of accumulated commits
+   ├─ git push origin main             # ff-only; NEVER force. accepts any backlog of accumulated commits
    ├─ Detect affected PM2 services     # see "Auto-deploy detection" below
    ├─ pnpm install --filter <touched-pkgs> --frozen-lockfile (if package.json changed)
    ├─ pnpm --filter <touched-pkgs> build (for compiled apps/packages)
    ├─ pm2 reload <service-name> for each affected service
    ├─ Wait 10s, check pm2 status === online for each, tail logs — no error spikes
    ├─ Run SPEC-listed smoke tests (1-3 critical paths) against the live deployment
-   ├─ git worktree remove .worktrees/<branch-kebab>
-   ├─ git branch -d feat/<branch>
    └─ Plain-language summary to user (see template below)
    ```
 
-   This is the strict default. There are no prompts or confirmation prompts for PR creation or local-only saving.
+   This is the strict default. There are no prompts, no PR creation, no branch handling, no "leave it for later" option.
 
 3. **Auto-deploy detection.** Before reload:
    - `pm2 list --json` → list of running services with their `pm2_env.pm_cwd`
@@ -255,7 +237,7 @@ When all checklist items are complete and all verifiers report clean:
    - All `verification_commands` from all done tasks green
    - All verifier subagents returned clean (or only medium/low findings)
    - Final Antigravity review gate passed
-   - Worktree git status clean (no uncommitted changes left)
+   - Working tree clean on `main` (no uncommitted changes left)
 
 6. **Plain-language summary**: Compose the final report following the template, allowed/forbidden vocabulary, and examples defined in the `ru-text-quick` skill (preloaded).
 
@@ -285,8 +267,8 @@ contained `task update <id> --status done`, run this checklist:
 
 - **Phase 0 always runs.** You announce the score before doing anything else. The user can override your scoring if they disagree.
 - **You don't skip Phase 2 (planning) on score ≥ 7.** Even if the user says "just do it" — gently push back: "Score is N; let me get a SPEC first, it'll be 60 seconds." If they insist, proceed without — but flag risk explicitly.
-- **You work in a project-local git worktree on score ≥ 4.** Implementation never happens in the main tree for non-trivial work. Worktree path is always `<project>/.worktrees/<branch-kebab>/` — never a sibling `../<repo>-<branch>/`. Symlink the orchestrator DB into the worktree's `.claude/` so `task` CLI works from inside. See Phase 3 for the canonical commands.
-- **You DO auto-merge to main + auto-deploy by default** when all verifier gates pass (smoke green, Antigravity review clean, no escape-hatch phrase from user). See Phase 7 "Default disposition = auto-deploy". User confirmation is required ONLY for: escape hatches (PR / leave / don't push), or any post-deploy failure (smoke red, push fail, PM2 crash). Force-push to main is STILL forbidden without the exact phrase «force push main» — the auto-deploy path uses ff-only push.
+- **You work directly on `main` — never in a worktree or feature branch, at any score.** All implementation happens in the main working tree. Keep commits small (one task = one commit). There is no branch lifecycle to create, merge, or clean up. See Phase 3.
+- **You auto-push to `main` + auto-deploy by default** when all verifier gates pass (smoke green, Antigravity review clean). NO user confirmation, NO PR, NO "leave it in a branch" option — the work is already on main. The ONLY things that pause you: a post-deploy failure (smoke red, push rejected, PM2 crash), or a destructive verification command. **Force-push to main is ALWAYS forbidden — the push path is strictly ff-only and there is no override phrase.**
 - **You don't skip worker-test-verifier.** Ever. Not even "I'm sure this works".
 - **All verifications run locally.** Verifications must be run locally via worker-test-verifier or verification_commands. Never call or wait for GitHub Actions / CI runs.
 - **Graph-first, grep-fallback.** Before editing a function/class/method, call `mcp__gitnexus__impact` to know the caller list. Before commit, `mcp__gitnexus__detect_changes(scope: "staged")`. Grep is acceptable only when both MCPs are unreachable and you've announced the degraded mode.
@@ -454,7 +436,7 @@ Why orchestrator does it, not the worker:
 | **Phase 4** (implement) | Code-touching only. Before editing each file → `mcp__gitnexus__impact(target: "<symbol>")`. Announce the blast-radius count in one line. If radius > 10 callers → pause and reassess scope. |
 | **Phase 4 → 5 handoff** | Code-touching only. Run `npx gitnexus analyze` (incremental) once per completed contract, soft-fail. See "Post-edit auto-analyze". |
 | **Phase 5** (review) | After analyze + commit → `mcp__gitnexus__detect_changes(scope: "staged" \| "branch")` to confirm scope matches plan (now against fresh index) + duplicate-detection sweep on new symbols (see "Post-edit auto-analyze" step 4) |
-| **Phase 7** (wrap up) | Code-touching only. `mcp__gitnexus__api_impact` if any API surface was touched — include in PR body |
+| **Phase 7** (wrap up) | Code-touching only. `mcp__gitnexus__api_impact` if any API surface was touched — include in deploy summary |
 
 ### How to read impact output
 

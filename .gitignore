@@ -4,3 +4,5 @@ debate-receipt.md
 .claude/
 AGENTS.md
 CLAUDE.md
+.worktrees/
+.claude/orchestrator.db*
