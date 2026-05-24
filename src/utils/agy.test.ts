@@ -83,15 +83,15 @@ describe("agy.ts utility tests", () => {
       exitCode: 1,
       exitDelayMs: 5,
     });
-    let error: any;
+    let error: (Error & { retryable?: boolean; exitCode?: number | null }) | undefined;
     try {
       await runAgy(["-p"], "hello", 0);
     } catch (e) {
-      error = e;
+      error = e as typeof error;
     }
     expect(error).toBeDefined();
-    expect(error.message).toContain("agy process exited with code 1");
-    expect(error.retryable).toBe(false);
+    expect(error!.message).toContain("agy process exited with code 1");
+    expect(error!.retryable).toBe(false);
     delete process.env.AGY_EXIT_FALLBACK_MS;
   });
 
@@ -105,18 +105,18 @@ describe("agy.ts utility tests", () => {
     });
 
     const startTime = Date.now();
-    let error: any;
+    let error: (Error & { retryable?: boolean; exitCode?: number | null }) | undefined;
     try {
       await runAgy(["-p"], "hello", 2);
     } catch (e) {
-      error = e;
+      error = e as typeof error;
     }
 
     const duration = Date.now() - startTime;
     expect(duration).toBeLessThan(400);
     expect(error).toBeDefined();
-    expect(error.message).toBe("Process timed out after 0.05 seconds");
-    expect(error.retryable).toBe(false);
+    expect(error!.message).toBe("Process timed out after 0.05 seconds");
+    expect(error!.retryable).toBe(false);
 
     delete process.env.AGY_TIMEOUT_MS;
   });

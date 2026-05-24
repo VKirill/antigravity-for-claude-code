@@ -4,6 +4,14 @@ import { join } from "path";
 import { homedir } from "os";
 import { logLifecycleEvent } from "./observability.ts";
 
+// Error shape used across runAgy: a standard Error carrying control flags the
+// caller inspects (retry policy, child exit code, fatal-crash marker).
+interface AgyError extends Error {
+  retryable?: boolean;
+  exitCode?: number | null;
+  fatalCrash?: boolean;
+}
+
 // Helper to run agy CLI command, passing prompt via stdin and inheriting environment
 export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<string> {
   let attempts = 0;
@@ -23,8 +31,8 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         : 1500;
 
       let isFinished = false;
-      let timeoutId: any = undefined;
-      let fallbackId: any = undefined;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
+      let fallbackId: ReturnType<typeof setTimeout> | undefined = undefined;
       let monitorId: ReturnType<typeof setInterval> | undefined = undefined;
       const attempt = attempts + 1;
       const startTime = Date.now();
@@ -53,7 +61,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         resolve(value);
       };
 
-      const safeReject = (err: any) => {
+      const safeReject = (err: AgyError) => {
         if (isFinished) return;
         isFinished = true;
         if (timeoutId) {
@@ -141,8 +149,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
               // process group already gone — nothing to kill
             }
           }
-          const err: Error & { retryable?: boolean; fatalCrash?: boolean } =
-            new Error(`agy executor crashed early: ${reason}. Aborted to avoid hanging until timeout.`);
+          const err: AgyError = new Error(`agy executor crashed early: ${reason}. Aborted to avoid hanging until timeout.`);
           err.retryable = false;
           err.fatalCrash = true;
           safeReject(err);
@@ -206,8 +213,8 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
             // ignore errors if the group is already gone
           }
         }
-        const err = new Error(`Process timed out after ${timeoutMs / 1000} seconds`);
-        (err as any).retryable = false;
+        const err: AgyError = new Error(`Process timed out after ${timeoutMs / 1000} seconds`);
+        err.retryable = false;
         safeReject(err);
       }, timeoutMs);
 
@@ -226,30 +233,35 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         stderr += data;
       });
 
-      child.on("error", (err) => {
-        (err as any).retryable = false;
-        safeReject(err);
+      child.on("error", (err: Error) => {
+        const e = err as AgyError;
+        e.retryable = false;
+        safeReject(e);
       });
 
-      child.on("exit", (code, signal) => {
+      child.on("exit", (code) => {
         if (isFinished) return;
         fallbackId = setTimeout(() => {
           if (!isFinished) {
             if (child.stdout && typeof child.stdout.destroy === "function") {
               try {
                 child.stdout.destroy();
-              } catch (e) {}
+              } catch {
+                // stdout already torn down — nothing to clean up
+              }
             }
             if (child.stderr && typeof child.stderr.destroy === "function") {
               try {
                 child.stderr.destroy();
-              } catch (e) {}
+              } catch {
+                // stderr already torn down — nothing to clean up
+              }
             }
             if (code === 0) {
               const trimmedOutput = stdout.trim();
               if (trimmedOutput === "") {
-                const err = new Error("Received empty response from agy" + (stderr.trim() ? `. Stderr: ${stderr.trim()}` : ""));
-                (err as any).retryable = true;
+                const err: AgyError = new Error("Received empty response from agy" + (stderr.trim() ? `. Stderr: ${stderr.trim()}` : ""));
+                err.retryable = true;
                 safeReject(err);
               } else {
                 safeResolve(trimmedOutput);
@@ -258,9 +270,9 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
               const errMessage = isTimedOut
                 ? `Process timed out after ${timeoutMs / 1000} seconds`
                 : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
-              const err = new Error(errMessage);
-              (err as any).exitCode = code;
-              (err as any).retryable = false;
+              const err: AgyError = new Error(errMessage);
+              err.exitCode = code;
+              err.retryable = false;
               safeReject(err);
             }
           }
@@ -271,8 +283,8 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         if (code === 0) {
           const trimmedOutput = stdout.trim();
           if (trimmedOutput === "") {
-            const err = new Error("Received empty response from agy" + (stderr.trim() ? `. Stderr: ${stderr.trim()}` : ""));
-            (err as any).retryable = true;
+            const err: AgyError = new Error("Received empty response from agy" + (stderr.trim() ? `. Stderr: ${stderr.trim()}` : ""));
+            err.retryable = true;
             safeReject(err);
           } else {
             safeResolve(trimmedOutput);
@@ -281,9 +293,9 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
           const errMessage = isTimedOut
             ? `Process timed out after ${timeoutMs / 1000} seconds`
             : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
-          const err = new Error(errMessage);
-          (err as any).exitCode = code;
-          (err as any).retryable = false;
+          const err: AgyError = new Error(errMessage);
+          err.exitCode = code;
+          err.retryable = false;
           safeReject(err);
         }
       });
@@ -293,8 +305,8 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
   const attemptRun = async (): Promise<string> => {
     try {
       return await execute();
-    } catch (err: any) {
-      if (err.retryable && attempts < maxRetries) {
+    } catch (err) {
+      if ((err as AgyError).retryable && attempts < maxRetries) {
         attempts++;
         // Wait 2 seconds before retry
         await new Promise(r => setTimeout(r, 2000));

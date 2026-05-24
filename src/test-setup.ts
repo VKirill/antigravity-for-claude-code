@@ -66,7 +66,7 @@ export function resetMockState() {
 
 mock.module("child_process", () => {
   return {
-    spawn: (cmd: string, args: string[], options: any) => {
+    spawn: (cmd: string, args: string[], options: unknown) => {
       lastSpawnArgs = args;
       const listeners: Record<string, Function[]> = {};
       const stdoutListeners: Function[] = [];
@@ -97,7 +97,7 @@ mock.module("child_process", () => {
 
       const pid = mockSpawnOutput.pid !== undefined ? mockSpawnOutput.pid : 12345;
 
-      const proc: any = {
+      const proc = {
         pid,
         stdin,
         stdout,
@@ -139,7 +139,7 @@ mock.module("child_process", () => {
 
       return proc;
     },
-    spawnSync: (cmd: string, args: string[], options: any) => {
+    spawnSync: (cmd: string, args: string[], options: unknown) => {
       lastSpawnSyncArgs = args;
       if (mockSpawnSyncOutput.error) {
         return {
@@ -214,9 +214,9 @@ mock.module("@modelcontextprotocol/sdk/server/stdio.js", () => {
       start = mock(() => Promise.resolve());
       send = mock(() => Promise.resolve());
       close = mock(() => Promise.resolve());
-      set onmessage(cb: any) {}
-      set onclose(cb: any) {}
-      set onerror(cb: any) {}
+      set onmessage(cb: unknown) {}
+      set onclose(cb: unknown) {}
+      set onerror(cb: unknown) {}
     }
   };
 });
