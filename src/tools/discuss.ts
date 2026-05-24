@@ -1,4 +1,4 @@
-import { ROLE_PRESETS } from "../config.ts";
+import { getRolePreset } from "../config.ts";
 import { sessionState } from "../state.ts";
 import { runAgy, getNewestConversationId } from "../utils/agy.ts";
 import { captureGitFiles, buildFooter } from "../utils/observability.ts";
@@ -29,8 +29,11 @@ export async function handleDiscussWithAntigravity(args: any) {
     const selectedSystemPrompt = args?.systemPrompt ? String(args.systemPrompt) : sessionState.pendingSystemPrompt;
 
     let systemPromptText = "";
-    if (selectedRole && ROLE_PRESETS[selectedRole.toLowerCase()]) {
-      systemPromptText = ROLE_PRESETS[selectedRole.toLowerCase()];
+    if (selectedRole) {
+      const preset = getRolePreset(selectedRole);
+      if (preset) {
+        systemPromptText = preset;
+      }
     }
 
     if (selectedSystemPrompt) {

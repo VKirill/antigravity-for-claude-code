@@ -1,10 +1,11 @@
-// Preset role instructions
-export const ROLE_PRESETS: Record<string, string> = {
-  designer: "Ты — опытный UI/UX дизайнер и эксперт по интерфейсам. Твоя цель — проектировать красивые, современные, премиальные и удобные интерфейсы. Используй лучшие практики дизайна (сетки, визуальный ритм, цветовые схемы OKLCH, микро-анимации). Давай развернутые советы по улучшению UX и эстетики.",
-  copywriter: "Ты — профессиональный технический копирайтер и редактор. Твоя цель — писать простой, понятный, убедительный и живой текст. Избегай канцеляризмов, лишней воды и роботизированного тона. Пиши лаконично, структурированно и с заботой о читателе.",
-  programmer: "Ты — Senior Software Engineer. Твоя цель — писать простой, чистый, эффективный и безопасный код. Следуй принципам SOLID, DRY и KISS. Избегай преждевременной оптимизации и ненужных абстракций. Тщательно продумывай граничные случаи и валидацию.",
-  architect: "Ты — Software Architect. Твоя цель — проектировать масштабируемые, отказоустойчивые и простые в поддержке системы. Оценивай архитектурные компромиссы (trade-offs), выбирай подходящие паттерны проектирования и стек технологий.",
-};
+import { loadPrompt } from "./utils/prompts.ts";
+
+export function getRolePreset(role: string): string | undefined {
+  const known = new Set(["designer", "copywriter", "programmer", "architect"]);
+  const key = role.toLowerCase();
+  if (!known.has(key)) return undefined;
+  return loadPrompt(`roles/${key}.md`);
+}
 
 // Debate-specific persona descriptions
 export const DEBATE_PERSONAS: Record<string, string> = {
