@@ -47,7 +47,13 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         reject(err);
       };
 
-      const child = spawn("/home/ubuntu/.local/bin/agy", args, {
+      const printTimeoutSec = Math.max(30, Math.floor(timeoutMs / 1000) - 20);  // 20s buffer below wrapper
+      let spawnArgs = args;
+      if (args.includes("--print") && !args.some(a => String(a).startsWith("--print-timeout"))) {
+        spawnArgs = [...args, "--print-timeout", `${printTimeoutSec}s`];
+      }
+
+      const child = spawn("/home/ubuntu/.local/bin/agy", spawnArgs, {
         cwd: projectCwd,
         env: {
           ...process.env,

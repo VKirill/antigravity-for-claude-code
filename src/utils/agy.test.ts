@@ -6,7 +6,8 @@ import {
   resetMockState,
   setMockSpawnOutput,
   setMockFiles,
-  setMockReaddirShouldThrow
+  setMockReaddirShouldThrow,
+  lastSpawnArgs
 } from "../test-setup.ts";
 import { runAgy, getNewestConversationId } from "./agy.ts";
 
@@ -134,5 +135,54 @@ describe("agy.ts utility tests", () => {
   test("getNewestConversationId handles read error gracefully", () => {
     setMockReaddirShouldThrow(true);
     expect(getNewestConversationId()).toBeNull();
+  });
+
+  test("runAgy appends --print-timeout aligned with default AGY_TIMEOUT_MS when --print is present", async () => {
+    setMockSpawnOutput({ stdout: "success", stderr: "", code: 0 });
+    const originalArgs = ["--print", "some-other-arg"];
+    const result = await runAgy(originalArgs, "hello");
+    expect(result).toBe("success");
+    
+    // Check that --print-timeout and "480s" (500000 / 1000 - 20 = 480) were appended
+    expect(lastSpawnArgs).toContain("--print-timeout");
+    const timeoutIndex = lastSpawnArgs.indexOf("--print-timeout");
+    expect(lastSpawnArgs[timeoutIndex + 1]).toBe("480s");
+    
+    // Check that the caller's original array was not mutated
+    expect(originalArgs).toEqual(["--print", "some-other-arg"]);
+  });
+
+  test("runAgy appends --print-timeout aligned with custom AGY_TIMEOUT_MS when --print is present", async () => {
+    process.env.AGY_TIMEOUT_MS = "120000"; // 120s -> expect 100s timeout
+    setMockSpawnOutput({ stdout: "success", stderr: "", code: 0 });
+    const result = await runAgy(["--print"], "hello");
+    expect(result).toBe("success");
+    
+    expect(lastSpawnArgs).toContain("--print-timeout");
+    const timeoutIndex = lastSpawnArgs.indexOf("--print-timeout");
+    expect(lastSpawnArgs[timeoutIndex + 1]).toBe("100s");
+    
+    delete process.env.AGY_TIMEOUT_MS;
+  });
+
+  test("runAgy clamps print timeout to a minimum of 30s", async () => {
+    process.env.AGY_TIMEOUT_MS = "40000"; // 40s -> 40 - 20 = 20, should clamp to 30s
+    setMockSpawnOutput({ stdout: "success", stderr: "", code: 0 });
+    await runAgy(["--print"], "hello");
+    
+    expect(lastSpawnArgs).toContain("--print-timeout");
+    const timeoutIndex = lastSpawnArgs.indexOf("--print-timeout");
+    expect(lastSpawnArgs[timeoutIndex + 1]).toBe("30s");
+    
+    delete process.env.AGY_TIMEOUT_MS;
+  });
+
+  test("runAgy does not append --print-timeout if it is already provided by caller", async () => {
+    setMockSpawnOutput({ stdout: "success", stderr: "", code: 0 });
+    const originalArgs = ["--print", "--print-timeout", "999s"];
+    await runAgy(originalArgs, "hello");
+    
+    expect(lastSpawnArgs).toEqual(["--print", "--print-timeout", "999s"]);
+    expect(originalArgs).toEqual(["--print", "--print-timeout", "999s"]);
   });
 });
