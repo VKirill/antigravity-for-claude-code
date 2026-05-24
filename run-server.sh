@@ -1,15 +1,18 @@
 #!/bin/bash
-# Per-PROJECT isolated home for the MCP Antigravity instance.
+# Per-PROJECT isolated home for the MCP Antigravity instance, stored INSIDE the
+# project at <project>/.gemini_mcp/ — keeps each project's agy state (conversations,
+# history) next to its code and avoids cluttering ~ with opaque hashed dirs.
 # Capture the project directory BEFORE sourcing profiles (which could cd).
 PROJECT_DIR="$(pwd)"
-PROJECT_KEY="$(printf '%s' "$PROJECT_DIR" | sha1sum | cut -c1-12)"
-
-# Each project gets its own agy state dir so concurrent sessions on DIFFERENT
-# projects do not share conversations/history (no TASK-NNN conversationId
-# collisions, no getNewestConversationId races, no cross-project context bleed).
-# NOTE: the Gemini account/OAuth is still shared (one account = one rate-limit pool).
-export MCP_HOME="/home/ubuntu/.gemini_mcp/$PROJECT_KEY"
+export MCP_HOME="$PROJECT_DIR/.gemini_mcp"
 mkdir -p "$MCP_HOME/.gemini/antigravity-cli/conversations"
+
+# Self-protecting ignore: make git in ANY host project ignore the whole state dir
+# (conversations/.pb, history.jsonl, scratch/node_modules can be large/sensitive).
+# This does not touch the host project's own root .gitignore.
+if [ ! -f "$MCP_HOME/.gitignore" ]; then
+  printf '*\n' > "$MCP_HOME/.gitignore"
+fi
 
 # Share credentials/config (read-only) from the main home; isolate conversations/history.
 ln -sf /home/ubuntu/.gemini/antigravity-cli/antigravity-oauth-token "$MCP_HOME/.gemini/antigravity-cli/antigravity-oauth-token"

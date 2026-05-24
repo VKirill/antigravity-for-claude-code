@@ -6,3 +6,4 @@ AGENTS.md
 CLAUDE.md
 .worktrees/
 .claude/orchestrator.db*
+.gemini_mcp/
