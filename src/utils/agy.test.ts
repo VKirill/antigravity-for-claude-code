@@ -143,10 +143,10 @@ describe("agy.ts utility tests", () => {
     const result = await runAgy(originalArgs, "hello");
     expect(result).toBe("success");
     
-    // Check that --print-timeout and "480s" (500000 / 1000 - 20 = 480) were appended
+    // Check that --print-timeout and "1180s" (1200000 / 1000 - 20 = 1180) were appended
     expect(lastSpawnArgs).toContain("--print-timeout");
     const timeoutIndex = lastSpawnArgs.indexOf("--print-timeout");
-    expect(lastSpawnArgs[timeoutIndex + 1]).toBe("480s");
+    expect(lastSpawnArgs[timeoutIndex + 1]).toBe("1180s");
     
     // Check that the caller's original array was not mutated
     expect(originalArgs).toEqual(["--print", "some-other-arg"]);

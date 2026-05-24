@@ -10,7 +10,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
     return new Promise((resolve, reject) => {
       const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
       const projectCwd = process.env.PWD || process.cwd();
-      const timeoutMs = Number(process.env.AGY_TIMEOUT_MS) || 500000;
+      const timeoutMs = Number(process.env.AGY_TIMEOUT_MS) || 1200000;
       const fallbackMs = process.env.AGY_EXIT_FALLBACK_MS
         ? Number(process.env.AGY_EXIT_FALLBACK_MS)
         : 1500;

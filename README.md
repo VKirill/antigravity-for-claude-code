@@ -182,8 +182,14 @@ Makes the validator executable and registers it in `~/.gemini/antigravity-cli/ho
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AGY_TIMEOUT_MS` | `500000` | Hard timeout for an `agy` call (kept below Claude Code's ~600s client limit). On timeout the whole process group is killed and the call fails non-retryably (so half-done edits aren't re-run). |
-| `AGY_EXIT_FALLBACK_MS` | `1500` | Grace window after the process exits before the bridge force-resolves with the buffered output — this is what prevents hangs when `agy`'s engine keeps a pipe open. |
+| `AGY_TIMEOUT_MS` | `1200000` | Hard timeout (ms) for an `agy` call. On timeout the whole process group is killed and the call fails non-retryably (so half-done edits aren't re-run). The server also passes `--print-timeout` to `agy` derived from this (`value/1000 − 20s`). |
+| `AGY_EXIT_FALLBACK_MS` | `1500` | Grace window (ms) after the process exits before the bridge force-resolves with the buffered output — this is what prevents hangs when `agy`'s engine keeps a pipe open. |
+
+> **Timeout layering.** Three limits stack and must stay ordered
+> `agy --print-timeout  <  AGY_TIMEOUT_MS  <  Claude Code's MCP tool timeout`.
+> The outermost (how long Claude Code waits for a tool result) is **not** set by this server — raise it
+> on the Claude Code side (e.g. `MCP_TOOL_TIMEOUT` in the environment) to at least `AGY_TIMEOUT_MS`,
+> otherwise Claude Code abandons the call first and you see "no response" while `agy` is still working.
 
 ---
 
