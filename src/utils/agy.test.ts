@@ -7,7 +7,9 @@ import {
   setMockSpawnOutput,
   setMockFiles,
   setMockReaddirShouldThrow,
-  lastSpawnArgs
+  lastSpawnArgs,
+  lastAppendFileSyncPath,
+  lastAppendFileSyncData
 } from "../test-setup.ts";
 import { runAgy, getNewestConversationId } from "./agy.ts";
 
@@ -184,5 +186,69 @@ describe("agy.ts utility tests", () => {
     
     expect(lastSpawnArgs).toEqual(["--print", "--print-timeout", "999s"]);
     expect(originalArgs).toEqual(["--print", "--print-timeout", "999s"]);
+  });
+
+  test("runAgy logs lifecycle events on success", async () => {
+    const logPath = "/path/to/lifecycle.log";
+    process.env.AGY_LIFECYCLE_LOG = logPath;
+    try {
+      setMockSpawnOutput({ stdout: "Some output", stderr: "some-error-log", code: 0 });
+      await runAgy(["-p"], "hello");
+      expect(lastAppendFileSyncPath).toBe(logPath);
+      const parsed = JSON.parse(lastAppendFileSyncData.trim());
+      expect(parsed.event).toBe("agy.done");
+      expect(parsed.attempt).toBe(1);
+      expect(parsed.durationMs).toBeDefined();
+      expect(parsed.stdoutSize).toBe(11); // "Some output".length
+      expect(parsed.stderrSize).toBe(14); // "some-error-log".length
+    } finally {
+      delete process.env.AGY_LIFECYCLE_LOG;
+    }
+  });
+
+  test("runAgy logs lifecycle events on error", async () => {
+    const logPath = "/path/to/lifecycle.log";
+    process.env.AGY_LIFECYCLE_LOG = logPath;
+    try {
+      setMockSpawnOutput({ stdout: "", stderr: "Fatal error log", code: 1 });
+      await expect(runAgy(["-p"], "hello", 0)).rejects.toThrow();
+      expect(lastAppendFileSyncPath).toBe(logPath);
+      const parsed = JSON.parse(lastAppendFileSyncData.trim());
+      expect(parsed.event).toBe("agy.error");
+      expect(parsed.attempt).toBe(1);
+      expect(parsed.durationMs).toBeDefined();
+      expect(parsed.message).toContain("exited with code 1");
+      expect(parsed.stderrSize).toBe(15); // "Fatal error log".length
+    } finally {
+      delete process.env.AGY_LIFECYCLE_LOG;
+    }
+  });
+
+  test("runAgy logs lifecycle events on timeout", async () => {
+    const logPath = "/path/to/lifecycle.log";
+    process.env.AGY_LIFECYCLE_LOG = logPath;
+    process.env.AGY_TIMEOUT_MS = "50";
+    try {
+      setMockSpawnOutput({
+        stdout: "delayed output",
+        stderr: "",
+        code: 0,
+        closeDelayMs: 500,
+      });
+      await expect(runAgy(["-p"], "hello", 0)).rejects.toThrow();
+      expect(lastAppendFileSyncPath).toBe(logPath);
+      const parsed = JSON.parse(lastAppendFileSyncData.trim());
+      expect(parsed.event).toBe("agy.timeout");
+      expect(parsed.attempt).toBe(1);
+      expect(parsed.durationMs).toBeDefined();
+    } finally {
+      delete process.env.AGY_LIFECYCLE_LOG;
+      delete process.env.AGY_TIMEOUT_MS;
+    }
+  });
+
+  test("runAgy appends stderr when stdout is empty", async () => {
+    setMockSpawnOutput({ stdout: "", stderr: "My custom stderr error", code: 0 });
+    await expect(runAgy(["-p"], "hello", 0)).rejects.toThrow("Received empty response from agy. Stderr: My custom stderr error");
   });
 });

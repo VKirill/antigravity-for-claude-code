@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, beforeAll } from "bun:test";
-import { MockTransport, resetMockState } from "./test-setup.ts";
+import { MockTransport, resetMockState, lastAppendFileSyncPath, appendFileSyncCalls } from "./test-setup.ts";
 import { server, startServer } from "./index.ts";
 import { resetTestState } from "./state.ts";
 import { join } from "path";
@@ -95,5 +95,36 @@ describe("index.ts entrypoint tests", () => {
 
     // Clean up
     proc.kill();
+  });
+
+  test("tool calls write dispatch event to AGY_LIFECYCLE_LOG", async () => {
+    const logPath = "/path/to/mcp-dispatch.log";
+    process.env.AGY_LIFECYCLE_LOG = logPath;
+    try {
+      transport.simulateReceive({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          name: "discuss_with_antigravity",
+          arguments: {
+            prompt: "Test prompt content",
+            conversationId: "TASK-101",
+          }
+        },
+        id: 55
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(lastAppendFileSyncPath).toBe(logPath);
+      expect(appendFileSyncCalls.length).toBeGreaterThan(0);
+      const parsed = JSON.parse(appendFileSyncCalls[0].data.trim());
+      expect(parsed.event).toBe("dispatch");
+      expect(parsed.tool).toBe("discuss_with_antigravity");
+      expect(parsed.conversationId).toBe("TASK-101");
+      expect(parsed.promptChars).toBe(19); // "Test prompt content".length
+    } finally {
+      delete process.env.AGY_LIFECYCLE_LOG;
+    }
   });
 });

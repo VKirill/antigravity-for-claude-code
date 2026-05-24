@@ -1,10 +1,41 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { resetMockState, setMockSpawnSyncOutput, lastSpawnSyncArgs } from "../test-setup.ts";
-import { captureGitFiles, buildFooter } from "./observability.ts";
+import { resetMockState, setMockSpawnSyncOutput, lastSpawnSyncArgs, lastAppendFileSyncPath, lastAppendFileSyncData } from "../test-setup.ts";
+import { captureGitFiles, buildFooter, logLifecycleEvent } from "./observability.ts";
+import { join } from "path";
 
 describe("observability utilities", () => {
   beforeEach(() => {
     resetMockState();
+  });
+
+  describe("logLifecycleEvent", () => {
+    const testLogFile = join(process.cwd(), "test-lifecycle.log");
+
+    it("should not write to file if AGY_LIFECYCLE_LOG is not set", () => {
+      const origEnv = process.env.AGY_LIFECYCLE_LOG;
+      delete process.env.AGY_LIFECYCLE_LOG;
+      try {
+        logLifecycleEvent("test.event", { foo: "bar" });
+        expect(lastAppendFileSyncPath).toBe("");
+      } finally {
+        process.env.AGY_LIFECYCLE_LOG = origEnv;
+      }
+    });
+
+    it("should write event to file when AGY_LIFECYCLE_LOG is set", () => {
+      const origEnv = process.env.AGY_LIFECYCLE_LOG;
+      process.env.AGY_LIFECYCLE_LOG = testLogFile;
+      try {
+        logLifecycleEvent("test.event", { foo: "bar" });
+        expect(lastAppendFileSyncPath).toBe(testLogFile);
+        const parsed = JSON.parse(lastAppendFileSyncData.trim());
+        expect(parsed.event).toBe("test.event");
+        expect(parsed.foo).toBe("bar");
+        expect(parsed.timestamp).toBeDefined();
+      } finally {
+        process.env.AGY_LIFECYCLE_LOG = origEnv;
+      }
+    });
   });
 
   describe("captureGitFiles", () => {

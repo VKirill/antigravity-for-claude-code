@@ -28,6 +28,9 @@ export let mockSpawnSyncOutput: {
   stdoutQueue?: string[];
 } = { stdout: "", stderr: "", status: 0 };
 export let lastSpawnSyncArgs: string[] = [];
+export let lastAppendFileSyncPath = "";
+export let lastAppendFileSyncData = "";
+export let appendFileSyncCalls: { filePath: string; data: string }[] = [];
 
 // Setters to allow test files to modify the state in ESM
 export function setMockSpawnOutput(val: typeof mockSpawnOutput) { mockSpawnOutput = val; }
@@ -39,6 +42,8 @@ export function setMockAuditLogContent(val: string) { mockAuditLogContent = val;
 export function setMockExistsSyncResult(val: boolean) { mockExistsSyncResult = val; }
 export function setMockSpawnSyncOutput(val: typeof mockSpawnSyncOutput) { mockSpawnSyncOutput = val; }
 export function setLastSpawnSyncArgs(val: string[]) { lastSpawnSyncArgs = val; }
+export function setLastAppendFileSyncPath(val: string) { lastAppendFileSyncPath = val; }
+export function setLastAppendFileSyncData(val: string) { lastAppendFileSyncData = val; }
 
 // Reset helper
 export function resetMockState() {
@@ -51,6 +56,9 @@ export function resetMockState() {
   mockExistsSyncResult = false;
   mockSpawnSyncOutput = { stdout: "", stderr: "", status: 0 };
   lastSpawnSyncArgs = [];
+  lastAppendFileSyncPath = "";
+  lastAppendFileSyncData = "";
+  appendFileSyncCalls = [];
 }
 
 mock.module("child_process", () => {
@@ -177,6 +185,11 @@ mock.module("fs", () => {
         return mockExistsSyncResult;
       }
       return false;
+    },
+    appendFileSync: (filePath: string, data: string, encoding: string) => {
+      lastAppendFileSyncPath = filePath;
+      lastAppendFileSyncData = data;
+      appendFileSyncCalls.push({ filePath, data });
     }
   };
 });

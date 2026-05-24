@@ -9,6 +9,7 @@ import { handleDiscussWithAntigravity, handleResetAntigravitySession } from "./t
 import { handleRunDebateDeliberation, handleRunInteractiveDebate } from "./tools/debate.ts";
 import { handleReviewCodeChanges, handleGetProgrammingAdvice } from "./tools/programming.ts";
 import { handleGetDebateReceipt } from "./tools/receipt.ts";
+import { logLifecycleEvent } from "./utils/observability.ts";
 
 export const server = new Server(
   {
@@ -190,7 +191,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  const { name, arguments: args } = request.params as any;
+
+  const metadata: any = {
+    tool: name,
+  };
+  if (args) {
+    if (args.conversationId !== undefined) metadata.conversationId = args.conversationId;
+    if (args.worker !== undefined) metadata.worker = args.worker;
+    if (args.skills !== undefined) metadata.skills = args.skills;
+    
+    // Check for string arguments to compute their lengths
+    const promptChars = args.prompt ? String(args.prompt).length :
+                        args.diff ? String(args.diff).length :
+                        args.question ? String(args.question).length :
+                        args.topic ? String(args.topic).length :
+                        undefined;
+    if (promptChars !== undefined) {
+      metadata.promptChars = promptChars;
+    }
+  }
+  logLifecycleEvent("dispatch", metadata);
 
   if (name === "discuss_with_antigravity") {
     return handleDiscussWithAntigravity(args);

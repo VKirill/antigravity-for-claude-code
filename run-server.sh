@@ -6,6 +6,7 @@
 # sessions per project. One dir per project — no dotfile clutter in $HOME root.
 # Capture the project directory + real home BEFORE sourcing profiles / overriding HOME.
 PROJECT_DIR="$(pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}"
 REAL_GEMINI="$HOME/.gemini/antigravity-cli"
 PROJECT_KEY="$(printf '%s' "$PROJECT_DIR" | sha1sum | cut -c1-12)"
@@ -32,4 +33,4 @@ export HOME="$MCP_HOME"
 
 # Run the server via Bun (from the project dir, so agy edits the right project)
 cd "$PROJECT_DIR"
-exec bun run /home/ubuntu/tools/antigravity-for-claude-code/src/index.ts
+exec bun run "$SCRIPT_DIR/src/index.ts"

@@ -1,14 +1,21 @@
 import { spawn } from "child_process";
 import { readdirSync, statSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
+import { logLifecycleEvent } from "./observability.ts";
 
 // Helper to run agy CLI command, passing prompt via stdin and inheriting environment
 export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<string> {
   let attempts = 0;
 
+  logLifecycleEvent("dispatch", {
+    args,
+    promptSize: Buffer.byteLength(prompt, "utf-8"),
+  });
+
   const execute = (): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
+      const homeDir = process.env.HOME || homedir();
       const projectCwd = process.env.PWD || process.cwd();
       const timeoutMs = Number(process.env.AGY_TIMEOUT_MS) || 1200000;
       const fallbackMs = process.env.AGY_EXIT_FALLBACK_MS
@@ -18,6 +25,8 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       let isFinished = false;
       let timeoutId: any = undefined;
       let fallbackId: any = undefined;
+      const attempt = attempts + 1;
+      const startTime = Date.now();
 
       const safeResolve = (value: string) => {
         if (isFinished) return;
@@ -30,6 +39,12 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
           clearTimeout(fallbackId);
           fallbackId = undefined;
         }
+        logLifecycleEvent("agy.done", {
+          attempt,
+          durationMs: Date.now() - startTime,
+          stdoutSize: Buffer.byteLength(value, "utf-8"),
+          stderrSize: Buffer.byteLength(stderr, "utf-8"),
+        });
         resolve(value);
       };
 
@@ -44,6 +59,20 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
           clearTimeout(fallbackId);
           fallbackId = undefined;
         }
+        if (isTimedOut) {
+          logLifecycleEvent("agy.timeout", {
+            attempt,
+            durationMs: Date.now() - startTime,
+          });
+        } else {
+          logLifecycleEvent("agy.error", {
+            attempt,
+            durationMs: Date.now() - startTime,
+            message: err.message || String(err),
+            exitCode: err.exitCode !== undefined ? err.exitCode : null,
+            stderrSize: Buffer.byteLength(stderr, "utf-8"),
+          });
+        }
         reject(err);
       };
 
@@ -53,7 +82,8 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         spawnArgs = [...args, "--print-timeout", `${printTimeoutSec}s`];
       }
 
-      const child = spawn("/home/ubuntu/.local/bin/agy", spawnArgs, {
+      const binPath = process.env.AGY_BIN || "agy";
+      const child = spawn(binPath, spawnArgs, {
         cwd: projectCwd,
         env: {
           ...process.env,
@@ -61,6 +91,12 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
           PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         },
         detached: true
+      });
+
+      logLifecycleEvent("agy.spawn", {
+        attempt,
+        args: spawnArgs,
+        pid: child.pid,
       });
       
       let stdout = "";
@@ -119,7 +155,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
             if (code === 0) {
               const trimmedOutput = stdout.trim();
               if (trimmedOutput === "") {
-                const err = new Error("Received empty response from agy");
+                const err = new Error("Received empty response from agy" + (stderr.trim() ? `. Stderr: ${stderr.trim()}` : ""));
                 (err as any).retryable = true;
                 safeReject(err);
               } else {
@@ -130,6 +166,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
                 ? `Process timed out after ${timeoutMs / 1000} seconds`
                 : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
               const err = new Error(errMessage);
+              (err as any).exitCode = code;
               (err as any).retryable = false;
               safeReject(err);
             }
@@ -141,7 +178,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         if (code === 0) {
           const trimmedOutput = stdout.trim();
           if (trimmedOutput === "") {
-            const err = new Error("Received empty response from agy");
+            const err = new Error("Received empty response from agy" + (stderr.trim() ? `. Stderr: ${stderr.trim()}` : ""));
             (err as any).retryable = true;
             safeReject(err);
           } else {
@@ -152,6 +189,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
             ? `Process timed out after ${timeoutMs / 1000} seconds`
             : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
           const err = new Error(errMessage);
+          (err as any).exitCode = code;
           (err as any).retryable = false;
           safeReject(err);
         }
@@ -177,7 +215,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
 }
 
 export function getNewestConversationId(): string | null {
-  const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
+  const homeDir = process.env.HOME || homedir();
   const dir = join(homeDir, ".gemini/antigravity-cli/conversations");
   try {
     const files = readdirSync(dir)

@@ -1,4 +1,26 @@
 import { spawnSync } from "child_process";
+import { appendFileSync } from "fs";
+
+/**
+ * Appends a JSONL lifecycle event to the file specified in AGY_LIFECYCLE_LOG env.
+ * Soft-fails on any write/io error.
+ */
+export function logLifecycleEvent(event: string, data: Record<string, any>): void {
+  const logPath = process.env.AGY_LIFECYCLE_LOG;
+  if (!logPath) {
+    return;
+  }
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event,
+    ...data,
+  };
+  try {
+    appendFileSync(logPath, JSON.stringify(payload) + "\n", "utf-8");
+  } catch (err) {
+    // Soft-fail
+  }
+}
 
 /**
  * Runs `git -C <cwd> status --porcelain` and returns the list of changed file paths.
@@ -59,3 +81,4 @@ export function buildFooter(before: string[], after: string[], durationMs: numbe
   }
   return `<!-- agy: ${durationSec}s | files_changed: ${changed.join(", ")} -->`;
 }
+
