@@ -149,7 +149,18 @@ while task ready --json | jq 'length' > 0:
   for each ready task:
     1. task export <id> > /tmp/contract.yaml       # read contract
     2. task update <id> --status assigned          # mark
-    3. Call 'mcp__antigravity__discuss_with_antigravity' simply by specifying the target assignee_agent name (e.g. worker-coder). Antigravity will automatically load the appropriate subagent based on the assignee_agent name.
+    3. Build the dispatch prompt (agy has NO built-in worker personas — YOU supply the full instruction):
+         a. Read prompts/workers/<assignee_agent>.md  (e.g. worker-coder.md, worker-reviewer.md).
+         b. Pick the skills array from prompts/skills-catalog.md = role DEFAULTS + task-specific skills
+            (match the stack/domain of this task). Keep it tight (3-6). Put them in the contract's
+            skill_hints too.
+         c. Replace the {{skills}} placeholder in the worker file with that array.
+         d. Send via mcp__antigravity__discuss_with_antigravity:
+              - role: programmer (coder/test/doctor) | architect (reviewer/refactor/security/payments/db) | designer (frontend/ui)
+              - prompt: <filled worker instruction> + "\n\n---\n\n" + <the clean YAML contract / ТЗ>
+         So agy receives: full worker discipline + skills to load + clean ТЗ — and returns the YAML result.
+         (Never paste the raw diff via shell $(cat ...) — it does NOT expand in an MCP arg; inline the text
+          or have the worker read the file/`git diff` itself.)
     4. task update <id> --status in_progress
     5. Wait for Antigravity response.
     6. Parse the YAML result block enclosed in ```yaml ... ``` from the response.
