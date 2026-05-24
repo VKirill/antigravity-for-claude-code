@@ -1,6 +1,23 @@
 import fs from "fs";
 import path from "path";
 
+function resolvePromptsDir(): string {
+  if (process.env.ANTIGRAVITY_PROMPTS_DIR) return process.env.ANTIGRAVITY_PROMPTS_DIR;
+  // walk up from import.meta.dir looking for a directory that contains a "prompts" subdir
+  let dir = import.meta.dir;
+  while (true) {
+    const candidate = path.join(dir, "prompts");
+    try {
+      if (fs.statSync(candidate).isDirectory()) return candidate;
+    } catch { /* not here */ }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;   // reached filesystem root
+    dir = parent;
+  }
+  // fallback: previous behavior
+  return path.resolve(import.meta.dir, "../../prompts");
+}
+
 /**
  * Loads a prompt from a file, performing placeholder substitution and trimming one trailing newline.
  *
@@ -9,7 +26,7 @@ import path from "path";
  * @returns The loaded and processed prompt string.
  */
 export function loadPrompt(relPath: string, vars?: Record<string, string>): string {
-  const promptsDir = process.env.ANTIGRAVITY_PROMPTS_DIR || path.resolve(import.meta.dir, "../../prompts");
+  const promptsDir = resolvePromptsDir();
   const absPath = path.join(promptsDir, relPath);
 
   let content: string;
