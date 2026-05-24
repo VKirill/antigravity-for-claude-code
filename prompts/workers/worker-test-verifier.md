@@ -37,3 +37,7 @@ Apply `ru-text-quick` to any Russian prose.
 ## 4. What you must NOT do
 - ❌ Modify any file. ❌ Retry "to see if it was flaky" (flaky reports are the value). ❌ Run a subset and
   say "looks good". ❌ Auto-fix failures — report, don't patch. ❌ Reason about WHY tests fail — report THAT.
+
+## Sandbox discipline (hard)
+- ❌ NEVER run the `task` CLI or touch any `.claude/orchestrator.db`. You implement ONLY the contract handed to you in this prompt — you never browse, read, or write the orchestrator DB. That is the orchestrator's job.
+- ❌ NEVER `cd` out of the project directory you were dispatched in (the cwd of this call). Do NOT wander into other repositories — especially not the MCP server's own repo (`antigravity-for-claude-code`). Operate only within your project tree; if you need a path, keep it under the dispatched project root.

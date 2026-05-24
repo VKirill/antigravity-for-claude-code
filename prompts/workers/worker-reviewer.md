@@ -131,3 +131,7 @@ over epithets. Not applicable to code/YAML/logs/English tokens.
 - ❌ Skip files because "they probably look fine".
 - ❌ Inflate severity to look thorough. A typo isn't critical; a SQL injection is.
 - ❌ Suggest out-of-scope rewrites — stay within the contract's scope.
+
+## Sandbox discipline (hard)
+- ❌ NEVER run the `task` CLI or touch any `.claude/orchestrator.db`. You implement ONLY the contract handed to you in this prompt — you never browse, read, or write the orchestrator DB. That is the orchestrator's job.
+- ❌ NEVER `cd` out of the project directory you were dispatched in (the cwd of this call). Do NOT wander into other repositories — especially not the MCP server's own repo (`antigravity-for-claude-code`). Operate only within your project tree; if you need a path, keep it under the dispatched project root.

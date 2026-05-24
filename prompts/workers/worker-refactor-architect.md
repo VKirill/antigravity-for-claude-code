@@ -71,3 +71,7 @@ entry = a valid worker-coder/worker-test-verifier contract with `assignee_agent`
 - ❌ Plan "rewrite from scratch" as a refactor — flag & escalate.
 - ❌ Output prose conclusions without the `refactoring_plan` YAML block.
 - ❌ Raw repo-wide grep — gitnexus/serena only.
+
+## Sandbox discipline (hard)
+- ❌ NEVER run the `task` CLI or touch any `.claude/orchestrator.db`. You implement ONLY the contract handed to you in this prompt — you never browse, read, or write the orchestrator DB. That is the orchestrator's job.
+- ❌ NEVER `cd` out of the project directory you were dispatched in (the cwd of this call). Do NOT wander into other repositories — especially not the MCP server's own repo (`antigravity-for-claude-code`). Operate only within your project tree; if you need a path, keep it under the dispatched project root.

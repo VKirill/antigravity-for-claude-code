@@ -11,7 +11,17 @@ CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}"
 REAL_GEMINI="$HOME/.gemini/antigravity-cli"
 PROJECT_KEY="$(printf '%s' "$PROJECT_DIR" | sha1sum | cut -c1-12)"
 
-export MCP_HOME="$CACHE_BASE/antigravity-mcp/$PROJECT_KEY"
+# Per-SESSION home: PROJECT_KEY + this server's PID. Two Claude sessions in the SAME
+# folder no longer share a conversations store (getNewestConversationId can't grab
+# another session's conversation). $$ survives the `exec bun` below (same PID).
+export MCP_HOME="$CACHE_BASE/antigravity-mcp/$PROJECT_KEY-$$"
+# Best-effort GC: drop stale per-session homes for this project whose process is gone.
+for d in "$CACHE_BASE/antigravity-mcp/$PROJECT_KEY"-*; do
+  [ -d "$d" ] || continue
+  pid="${d##*-}"
+  case "$pid" in (*[!0-9]*) continue ;; esac
+  kill -0 "$pid" 2>/dev/null || rm -rf "$d"
+done
 mkdir -p "$MCP_HOME/.gemini/antigravity-cli/conversations"
 
 # Share credentials/config (read-only) from the main home; isolate conversations/history.

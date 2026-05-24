@@ -50,8 +50,8 @@ describe("discuss.ts tool tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(2);
     expect(response.result.content[0].text).toContain("Architect analysis complete.");
-    expect(response.result.content[0].text).toContain("<!-- active_session_id: new-uuid-123 -->");
-    expect(sessionState.activeConversationId).toBe("new-uuid-123");
+    expect(response.result.content[0].text).toContain("<!-- active_session_id: new -->");
+    expect(sessionState.activeConversationId).toBeNull();
   });
 
   test("discuss_with_antigravity - continues existing session using in-memory ID", async () => {
@@ -64,7 +64,7 @@ describe("discuss.ts tool tests", () => {
       method: "tools/call",
       params: {
         name: "discuss_with_antigravity",
-        arguments: { prompt: "First message" }
+        arguments: { prompt: "First message", conversationId: "session-456" }
       },
       id: 3
     });
@@ -215,7 +215,7 @@ describe("discuss.ts tool tests", () => {
     expect(response.result.content[0].text).toContain("Success after retry");
   });
 
-  test("discuss_with_antigravity - falls back to unknown session ID if conversations folder is empty", async () => {
+  test("discuss_with_antigravity - leaves session ID null and uses 'new' fallback marker if conversations folder is empty", async () => {
     setMockFiles([]);
     setMockSpawnOutput({ stdout: "Reply with no files", stderr: "", code: 0 });
 
@@ -233,7 +233,8 @@ describe("discuss.ts tool tests", () => {
 
     const response: any = transport.sentMessages[0];
     expect(response.result.content[0].text).toContain("Reply with no files");
-    expect(response.result.content[0].text).toContain("<!-- active_session_id: unknown -->");
+    expect(response.result.content[0].text).toContain("<!-- active_session_id: new -->");
+    expect(sessionState.activeConversationId).toBeNull();
   });
 
   test("reset_antigravity_session - clears session ID and sets pending parameters", async () => {
@@ -244,7 +245,7 @@ describe("discuss.ts tool tests", () => {
       method: "tools/call",
       params: {
         name: "discuss_with_antigravity",
-        arguments: { prompt: "Setup" }
+        arguments: { prompt: "Setup", conversationId: "session-999" }
       },
       id: 10
     });
@@ -290,6 +291,7 @@ describe("discuss.ts tool tests", () => {
   });
 
   test("discuss_with_antigravity - appends observability footer with changed files", async () => {
+    sessionState.activeConversationId = "session-obs";
     setMockFiles([{ name: "session-obs.pb", mtime: 1000 }]);
     setMockSpawnOutput({ stdout: "Done", stderr: "", code: 0 });
     

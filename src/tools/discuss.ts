@@ -1,5 +1,5 @@
 import { sessionState } from "../state.ts";
-import { runAgy, getNewestConversationId } from "../utils/agy.ts";
+import { runAgy } from "../utils/agy.ts";
 import { captureGitFiles, buildFooter } from "../utils/observability.ts";
 import { loadPrompt } from "../utils/prompts.ts";
 
@@ -70,14 +70,11 @@ export async function handleDiscussWithAntigravity(args: any) {
   try {
     const responseText = await runAgy(cmdArgs, promptToSend);
     
-    // If we didn't have an ID, grab the newly created one and store it
     if (conversationIdToUse) {
       sessionState.activeConversationId = conversationIdToUse;
-    } else {
-      sessionState.activeConversationId = getNewestConversationId();
     }
 
-    const currentId = sessionState.activeConversationId || "unknown";
+    const currentId = sessionState.activeConversationId || "new";
 
     let footer = "";
     try {

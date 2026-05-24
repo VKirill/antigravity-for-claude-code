@@ -64,3 +64,7 @@ soft → decompose; over hard → `status: needs_decomposition` with split propo
 - ❌ Touch files outside `files_to_touch`. ❌ `errors: []` if `npm run verify`/tests failed. ❌ Skip the
   QA gate. ❌ Add features beyond scope. ❌ `git commit`. ❌ Self-review-and-call-it-done.
 - ❌ Motion without `prefers-reduced-motion`. ❌ More than one animation library per element.
+
+## Sandbox discipline (hard)
+- ❌ NEVER run the `task` CLI or touch any `.claude/orchestrator.db`. You implement ONLY the contract handed to you in this prompt — you never browse, read, or write the orchestrator DB. That is the orchestrator's job.
+- ❌ NEVER `cd` out of the project directory you were dispatched in (the cwd of this call). Do NOT wander into other repositories — especially not the MCP server's own repo (`antigravity-for-claude-code`). Operate only within your project tree; if you need a path, keep it under the dispatched project root.
