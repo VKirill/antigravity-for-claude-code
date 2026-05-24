@@ -97,6 +97,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       });
 
       child.on("exit", (code, signal) => {
+        if (isFinished) return;
         fallbackId = setTimeout(() => {
           if (!isFinished) {
             if (child.stdout && typeof child.stdout.destroy === "function") {

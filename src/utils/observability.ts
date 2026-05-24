@@ -44,8 +44,9 @@ export function captureGitFiles(cwd: string): string[] {
 
 /**
  * Returns a compact HTML-comment footer string.
- * Treat `after` as the authoritative changed-set; if after is empty,
- * omit the files_changed segment and emit just `<!-- agy: X.Ys -->`.
+ * Reports the DELTA between `before` and `after`: files added/modified (in after,
+ * not in before) plus files deleted (in before, not in after). If the delta is
+ * empty, omits the files_changed segment and emits just `<!-- agy: X.Ys -->`.
  */
 export function buildFooter(before: string[], after: string[], durationMs: number): string {
   const durationSec = (durationMs / 1000).toFixed(1);
