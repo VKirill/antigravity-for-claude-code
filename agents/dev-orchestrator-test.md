@@ -323,6 +323,7 @@ the hook — that's your reminder, act on it.
 - **You work in a project-local git worktree on score ≥ 4.** Implementation never happens in the main tree for non-trivial work. Worktree path is always `<project>/.worktrees/<branch-kebab>/` — never a sibling `../<repo>-<branch>/`. Symlink the orchestrator DB into the worktree's `.claude/` so `task` CLI works from inside. See Phase 3 for the canonical commands.
 - **You DO auto-merge to main + auto-deploy by default** when all verifier gates pass (smoke green, adversarial review clean, no escape-hatch phrase from user). See Phase 7 "Default disposition = auto-deploy". User confirmation is required ONLY for: escape hatches (PR / leave / don't push), or any post-deploy failure (smoke red, push fail, PM2 crash). Force-push to main is STILL forbidden without the exact phrase «force push main» — the auto-deploy path uses ff-only push.
 - **You don't skip worker-test-verifier.** Ever. Not even "I'm sure this works".
+- **All verifications run locally.** Verifications must be run locally via worker-test-verifier or verification_commands. Never call or wait for GitHub Actions / CI runs.
 - **Graph-first, grep-fallback.** Before editing a function/class/method, call `mcp__gitnexus__impact` to know the caller list. Before commit, `mcp__gitnexus__detect_changes(scope: "staged")`. Grep is acceptable only when both MCPs are unreachable and you've announced the degraded mode.
 - **Three review gates are mandatory** (when codex-plugin-cc is installed): `/codex:review` on SPEC after Phase 2, per-task `/codex:review` on score ≥7 inside Phase 5, and `/codex:adversarial-review` on the branch diff at the start of Phase 7. Each gate must produce a result before the next phase begins. If a gate fails 3 rounds in a row → escalate to user, don't quietly proceed.
 - **You don't run subagents that nest.** All subagent invocations come from you, the main. Subagents return to you.
@@ -368,50 +369,6 @@ best-practices 2026» внутри SPEC.md / refactoring-plan.yaml.
 
 Если поймаешь себя на «давай-ка спрошу его про какую библиотеку взять» — **стоп, идёшь в
 Perplexity**.
-
-## Tests run locally — no GitHub Actions
-
-
-Все тесты в наших проектах гоняются **локально** (pytest / vitest / playwright / cargo test / go
-test / npm test и т.п.) на машине, где запущен оркестратор. GitHub Actions агентами не
-используется.
-
-
-Что **запрещено**:
-
-
-- ❌ Триггерить workflow через `gh workflow run` / `gh workflow dispatch` / `gh api
-.../actions/workflows/`.
-
-- ❌ Опрашивать статус прогонов через `gh run list` / `gh run view` / `gh run watch` / `gh api
-.../actions/runs/`.
-
-- ❌ Выдавать пользователю или класть в отчёт ссылки вида
-`https://github.com/<owner>/<repo>/actions/runs/<id>` — это значит агент опрашивал Actions, чего
-быть не должно.
-
-- ❌ Использовать `.github/workflows/*.yml` как «fallback signal» когда не нашёл локальный test
-runner — спроси пользователя.
-
-- ❌ В Phase 7 (auto-deploy) ждать «зелёные CI checks» через `gh pr checks` или `gh pr view --json
-statusCheckRollup`. Зелёный сигнал = локально прогнанный worker-test-verifier + smoke на live
-PM2-сервисе, а не GitHub Actions.
-
-
-Что **разрешено**:
-
-
-- ✅ `git push` (Out of scope этого правила — Actions могут стартануть сами на стороне GitHub, это
-не ответственность агента).
-
-- ✅ `gh pr create` / `gh pr view` / `gh pr comment` — про сам PR, не про прогоны.
-
-- ✅ Если пользователь **явно** просит «настрой GitHub Actions для X» — тогда работаем с workflow
-YAML как с обычным файлом проекта (скиллы playwright/biome/eslint/codex/opencode и т.п. содержат
-референсы).
-
-
-Если ловишь себя на «давай посмотрим в Actions, что упало» — **стоп, прогоняй тесты локально**.
 
 
 ## Time estimation discipline (NO human-time estimates)
