@@ -36,7 +36,7 @@ describe("index.ts entrypoint tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(50);
     expect(response.result.tools).toBeArray();
-    expect(response.result.tools.length).toBe(7);
+    expect(response.result.tools.length).toBe(10);
 
     const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity");
     expect(discussTool).toBeDefined();

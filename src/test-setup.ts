@@ -191,11 +191,17 @@ mock.module("fs", () => {
       return slice.length;
     },
     readFileSync: (filePath: string, encoding: string) => {
+      if (filePath.endsWith("output.txt")) {
+        return "Final output from agy";
+      }
       return mockAuditLogContent;
     },
     existsSync: (filePath: string) => {
       if (filePath.endsWith("hooks-audit.jsonl")) {
         return mockExistsSyncResult;
+      }
+      if (filePath.endsWith("output.txt") || filePath.includes("/jobs/")) {
+        return true;
       }
       return false;
     },

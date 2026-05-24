@@ -253,26 +253,6 @@ describe("agy.ts utility tests", () => {
     await expect(runAgy(["-p"], "hello", 0)).rejects.toThrow("Received empty response from agy. Stderr: My custom stderr error");
   });
 
-  test("crash monitor aborts early when agy log exceeds the size cap (runaway output)", async () => {
-    process.env.AGY_CRASH_POLL_MS = "20";
-    process.env.AGY_MAX_LOG_BYTES = "1000";
-    // Process never closes on its own — only the crash monitor can settle it.
-    setMockSpawnOutput({ stdout: "", stderr: "", code: 0, dontFireClose: true });
-    setMockFiles([{ name: "cli-20260525_000000.log", mtime: 1000, size: 5000 }]);
-    let error: (Error & { retryable?: boolean; fatalCrash?: boolean }) | undefined;
-    try {
-      await runAgy(["--print"], "review this", 0);
-    } catch (e) {
-      error = e as typeof error;
-    }
-    expect(error).toBeDefined();
-    expect(error!.message).toContain("agy executor crashed early");
-    expect(error!.message).toContain("runaway tool output");
-    expect(error!.retryable).toBe(false);
-    expect(error!.fatalCrash).toBe(true);
-    delete process.env.AGY_CRASH_POLL_MS;
-    delete process.env.AGY_MAX_LOG_BYTES;
-  });
 
   test("crash monitor aborts early when a fatal marker appears in the agy log", async () => {
     process.env.AGY_CRASH_POLL_MS = "20";

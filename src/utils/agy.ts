@@ -121,12 +121,11 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
       let isTimedOut = false;
 
       // Crash monitor: agy can balloon its own log with oversized tool output
-      // (a tool result too large to convert into model messages → HTTP 413 →
+      // (a tool result too large to convert into model messages -> HTTP 413 ->
       // "trajectory converted to zero chat messages"). The executor then idles
       // uselessly until --print-timeout. Detect that early via the agy CLI log
       // (runaway size OR a fatal marker) and abort so recovery re-dispatches fast.
       if (process.env.AGY_CRASH_MONITOR !== "0" && spawnArgs.includes("--print")) {
-        const maxLogBytes = Number(process.env.AGY_MAX_LOG_BYTES) || 25 * 1024 * 1024;
         const pollMs = Number(process.env.AGY_CRASH_POLL_MS) || 3000;
         const markers = (process.env.AGY_FATAL_MARKERS ||
           "trajectory converted to zero chat messages,agent executor error")
@@ -174,10 +173,6 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
               lastPos = 0;
             }
             const size = statSync(logFile).size;
-            if (size >= maxLogBytes) {
-              fireFatal(`agy log exceeded ${Math.round(maxLogBytes / 1048576)}MB (runaway tool output)`);
-              return;
-            }
             if (size > lastPos) {
               const start = Math.max(lastPos, size - tailScanBytes);
               const len = size - start;

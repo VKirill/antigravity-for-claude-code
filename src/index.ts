@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { handleDiscussWithAntigravity, handleResetAntigravitySession } from "./tools/discuss.ts";
+import { handleDiscussWithAntigravityAsyncStart, handleDiscussWithAntigravityAsyncStatus, handleDiscussWithAntigravityAsyncResult } from "./tools/discuss_async.ts";
 import { handleRunDebateDeliberation, handleRunInteractiveDebate } from "./tools/debate.ts";
 import { handleReviewCodeChanges, handleGetProgrammingAdvice } from "./tools/programming.ts";
 import { handleGetDebateReceipt } from "./tools/receipt.ts";
@@ -58,6 +59,67 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["prompt"],
+        },
+      },
+      {
+        name: "discuss_with_antigravity_async_start",
+        description: "Starts an asynchronous task execution inside a background tmux session using agy CLI. Returns a jobId immediately. The job processes the task in the workspace and writes logs to .claude/jobs/<jobId>.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            prompt: {
+              type: "string",
+              description: "The prompt/message/question to send to Antigravity.",
+            },
+            conversationId: {
+              type: "string",
+              description: "Optional conversation ID to resume a specific historical thread.",
+            },
+            systemPrompt: {
+              type: "string",
+              description: "Optional custom system instructions (only when starting new session).",
+            },
+            worker: {
+              type: "string",
+              description: "Optional worker prompt file name under prompts/workers/ (e.g. 'worker-coder').",
+            },
+            skills: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+              description: "Skills the worker must load, injected into the worker instruction's {{skills}} placeholder.",
+            },
+          },
+          required: ["prompt"],
+        },
+      },
+      {
+        name: "discuss_with_antigravity_async_status",
+        description: "Checks the status of an active or completed background task running in tmux. Returns the state (running, success, failed, killed) and the tail of the log output.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            jobId: {
+              type: "string",
+              description: "The unique job ID returned by discuss_with_antigravity_async_start.",
+            },
+          },
+          required: ["jobId"],
+        },
+      },
+      {
+        name: "discuss_with_antigravity_async_result",
+        description: "Retrieves the final output response text of a completed background task. Call this only when status is no longer running.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            jobId: {
+              type: "string",
+              description: "The unique job ID of the completed task.",
+            },
+          },
+          required: ["jobId"],
         },
       },
       {
@@ -215,6 +277,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   if (name === "discuss_with_antigravity") {
     return handleDiscussWithAntigravity(args);
+  }
+
+  if (name === "discuss_with_antigravity_async_start") {
+    return handleDiscussWithAntigravityAsyncStart(args);
+  }
+
+  if (name === "discuss_with_antigravity_async_status") {
+    return handleDiscussWithAntigravityAsyncStatus(args);
+  }
+
+  if (name === "discuss_with_antigravity_async_result") {
+    return handleDiscussWithAntigravityAsyncResult(args);
   }
 
   if (name === "reset_antigravity_session") {
