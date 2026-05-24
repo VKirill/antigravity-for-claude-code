@@ -140,7 +140,8 @@ bun run build      # компиляция src/ -> dist/ (под Node)
   "mcpServers": {
     "antigravity": {
       "command": "node",
-      "args": ["/АБСОЛЮТНЫЙ/ПУТЬ/к/antigravity-for-claude-code/dist/index.js"]
+      "args": ["/АБСОЛЮТНЫЙ/ПУТЬ/к/antigravity-for-claude-code/dist/index.js"],
+      "timeout": 1260000
     }
   }
 }
@@ -187,9 +188,12 @@ bun run install-hooks   # или: npm run install-hooks
 
 > **Слои таймаутов.** Три лимита складываются и должны идти по порядку:
 > `agy --print-timeout  <  AGY_TIMEOUT_MS  <  таймаут MCP-тула в Claude Code`.
-> Самый внешний (сколько Claude Code ждёт ответ тула) **этот сервер не задаёт** — поднимайте его
-> на стороне Claude Code (например, `MCP_TOOL_TIMEOUT` в окружении) минимум до `AGY_TIMEOUT_MS`,
-> иначе Claude Code бросит ожидание первым и вы увидите «нет ответа», пока `agy` ещё работает.
+> Самый внешний (сколько Claude Code ждёт ответ тула) **этот сервер не задаёт**. Глобальный дефолт
+> Claude Code `MCP_TOOL_TIMEOUT` = **600000 мс (10 мин)** — это *ниже* дефолта `AGY_TIMEOUT_MS` выше,
+> поэтому его надо поднять. Предпочтительно — задать **per-server** поле `timeout` (мс) в записи
+> `mcpServers` (см. шаг 2 установки — оно скоупит только сервер antigravity и покрывает ожидание ответа
+> тула). Ставьте его чуть выше `AGY_TIMEOUT_MS` (например `1260000`), чтобы первым сработал наш чистый
+> таймаут с group-kill. Глобальный env `MCP_TOOL_TIMEOUT` тоже работает, но влияет на все MCP-серверы.
 
 ---
 

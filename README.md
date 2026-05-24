@@ -140,7 +140,8 @@ Add it to your `~/.claude.json` (use the **absolute path** to your clone):
   "mcpServers": {
     "antigravity": {
       "command": "node",
-      "args": ["/ABSOLUTE/PATH/to/antigravity-for-claude-code/dist/index.js"]
+      "args": ["/ABSOLUTE/PATH/to/antigravity-for-claude-code/dist/index.js"],
+      "timeout": 1260000
     }
   }
 }
@@ -187,9 +188,12 @@ Makes the validator executable and registers it in `~/.gemini/antigravity-cli/ho
 
 > **Timeout layering.** Three limits stack and must stay ordered
 > `agy --print-timeout  <  AGY_TIMEOUT_MS  <  Claude Code's MCP tool timeout`.
-> The outermost (how long Claude Code waits for a tool result) is **not** set by this server — raise it
-> on the Claude Code side (e.g. `MCP_TOOL_TIMEOUT` in the environment) to at least `AGY_TIMEOUT_MS`,
-> otherwise Claude Code abandons the call first and you see "no response" while `agy` is still working.
+> The outermost (how long Claude Code waits for a tool result) is **not** set by this server. Claude Code's
+> global default is `MCP_TOOL_TIMEOUT` = **600000 ms (10 min)**, which is *below* the `AGY_TIMEOUT_MS`
+> default above — so raise it. Preferred: set a **per-server** `timeout` (ms) in the `mcpServers` entry
+> (see install step 2 — it scopes only the antigravity server and covers tool-call waits). Set it
+> slightly above `AGY_TIMEOUT_MS` (e.g. `1260000`) so the server's own clean timeout + process-group kill
+> fires first. The global `MCP_TOOL_TIMEOUT` env var works too but affects every MCP server.
 
 ---
 
