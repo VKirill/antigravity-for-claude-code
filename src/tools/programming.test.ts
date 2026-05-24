@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, beforeAll } from "bun:test";
-import { MockTransport, resetMockState, setMockSpawnOutput, lastSpawnArgs, lastSpawnStdin } from "../test-setup.ts";
+import { MockTransport, resetMockState, setMockSpawnOutput, lastSpawnArgs, lastSpawnStdin, setMockSpawnSyncOutput } from "../test-setup.ts";
 import { server } from "../index.ts";
 import { resetTestState } from "../state.ts";
 
@@ -127,5 +127,65 @@ describe("programming.ts tool tests", () => {
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain("Ошибка при получении совета по программированию");
     expect(response.result.content[0].text).toContain("Advice API down");
+  });
+
+  test("review_code_changes - appends footer with duration and changed files", async () => {
+    setMockSpawnOutput({ stdout: "Done", stderr: "", code: 0 });
+    setMockSpawnSyncOutput({
+      stdout: "",
+      stderr: "",
+      status: 0,
+      stdoutQueue: ["", " M src/tools/programming.ts\n?? src/utils/observability.ts\n"]
+    });
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "review_code_changes",
+        arguments: {
+          diff: "some diff"
+        }
+      },
+      id: 50
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    const text = response.result.content[0].text;
+    expect(text).toContain("Done");
+    expect(text).toMatch(/<!-- agy: \d+\.\ds \| files_changed: src\/tools\/programming\.ts, src\/utils\/observability\.ts -->/);
+  });
+
+  test("get_programming_advice - appends footer with duration and no changed files", async () => {
+    setMockSpawnOutput({ stdout: "Done advice", stderr: "", code: 0 });
+    setMockSpawnSyncOutput({
+      stdout: "",
+      stderr: "",
+      status: 0
+    });
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "get_programming_advice",
+        arguments: {
+          question: "How to exit Vim?"
+        }
+      },
+      id: 51
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    const text = response.result.content[0].text;
+    expect(text).toContain("Done advice");
+    expect(text).toMatch(/<!-- agy: \d+\.\ds -->/);
+    expect(text).not.toContain("files_changed");
   });
 });

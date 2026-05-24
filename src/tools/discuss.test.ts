@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, beforeAll } from "bun:test";
-import { MockTransport, resetMockState, setMockSpawnOutput, setMockFiles, lastSpawnArgs, lastSpawnStdin } from "../test-setup.ts";
+import { MockTransport, resetMockState, setMockSpawnOutput, setMockFiles, lastSpawnArgs, lastSpawnStdin, setMockSpawnSyncOutput } from "../test-setup.ts";
 import { server } from "../index.ts";
 import { sessionState, resetTestState } from "../state.ts";
 
@@ -331,5 +331,35 @@ describe("discuss.ts tool tests", () => {
     expect(lastSpawnArgs).toContain("--continue=false");
     expect(lastSpawnStdin).toContain("Ты — Software Architect.");
     expect(lastSpawnStdin).toContain("Design systems only.");
+  });
+
+  test("discuss_with_antigravity - appends observability footer with changed files", async () => {
+    setMockFiles([{ name: "session-obs.pb", mtime: 1000 }]);
+    setMockSpawnOutput({ stdout: "Done", stderr: "", code: 0 });
+    
+    setMockSpawnSyncOutput({
+      stdout: "",
+      stderr: "",
+      status: 0,
+      stdoutQueue: ["", " M src/tools/discuss.ts\n?? src/utils/observability.ts\n"]
+    });
+
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity",
+        arguments: { prompt: "Test footer" }
+      },
+      id: 88
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(transport.sentMessages.length).toBe(1);
+    const response: any = transport.sentMessages[0];
+    const text = response.result.content[0].text;
+    expect(text).toContain("<!-- active_session_id: session-obs -->");
+    expect(text).toMatch(/<!-- agy: \d+\.\ds \| files_changed: src\/tools\/discuss\.ts, src\/utils\/observability\.ts -->/);
   });
 });

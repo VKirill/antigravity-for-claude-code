@@ -10,6 +10,42 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
     return new Promise((resolve, reject) => {
       const homeDir = process.env.HOME || "/home/ubuntu/.gemini_mcp";
       const projectCwd = process.env.PWD || process.cwd();
+      const timeoutMs = Number(process.env.AGY_TIMEOUT_MS) || 500000;
+      const fallbackMs = process.env.AGY_EXIT_FALLBACK_MS
+        ? Number(process.env.AGY_EXIT_FALLBACK_MS)
+        : 1500;
+
+      let isFinished = false;
+      let timeoutId: any = undefined;
+      let fallbackId: any = undefined;
+
+      const safeResolve = (value: string) => {
+        if (isFinished) return;
+        isFinished = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        if (fallbackId) {
+          clearTimeout(fallbackId);
+          fallbackId = undefined;
+        }
+        resolve(value);
+      };
+
+      const safeReject = (err: any) => {
+        if (isFinished) return;
+        isFinished = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        if (fallbackId) {
+          clearTimeout(fallbackId);
+          fallbackId = undefined;
+        }
+        reject(err);
+      };
 
       const child = spawn("/home/ubuntu/.local/bin/agy", args, {
         cwd: projectCwd,
@@ -17,18 +53,28 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
           ...process.env,
           HOME: homeDir,
           PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        }
+        },
+        detached: true
       });
       
       let stdout = "";
       let stderr = "";
       let isTimedOut = false;
 
-      // Timeout handler: 90 seconds (90000 ms)
-      const timeoutId = setTimeout(() => {
+      // Timeout handler
+      timeoutId = setTimeout(() => {
         isTimedOut = true;
-        child.kill("SIGKILL");
-      }, 90000);
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+          } catch (e) {
+            // ignore errors if the group is already gone
+          }
+        }
+        const err = new Error(`Process timed out after ${timeoutMs / 1000} seconds`);
+        (err as any).retryable = false;
+        safeReject(err);
+      }, timeoutMs);
 
       // Write prompt to stdin and close it
       child.stdin.write(prompt);
@@ -45,28 +91,63 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
         stderr += data;
       });
 
+      child.on("error", (err) => {
+        (err as any).retryable = false;
+        safeReject(err);
+      });
+
+      child.on("exit", (code, signal) => {
+        if (isFinished) return;
+        fallbackId = setTimeout(() => {
+          if (!isFinished) {
+            if (child.stdout && typeof child.stdout.destroy === "function") {
+              try {
+                child.stdout.destroy();
+              } catch (e) {}
+            }
+            if (child.stderr && typeof child.stderr.destroy === "function") {
+              try {
+                child.stderr.destroy();
+              } catch (e) {}
+            }
+            if (code === 0) {
+              const trimmedOutput = stdout.trim();
+              if (trimmedOutput === "") {
+                const err = new Error("Received empty response from agy");
+                (err as any).retryable = true;
+                safeReject(err);
+              } else {
+                safeResolve(trimmedOutput);
+              }
+            } else {
+              const errMessage = isTimedOut
+                ? `Process timed out after ${timeoutMs / 1000} seconds`
+                : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
+              const err = new Error(errMessage);
+              (err as any).retryable = false;
+              safeReject(err);
+            }
+          }
+        }, fallbackMs);
+      });
+
       child.on("close", (code) => {
-        clearTimeout(timeoutId);
         if (code === 0) {
           const trimmedOutput = stdout.trim();
           if (trimmedOutput === "") {
             const err = new Error("Received empty response from agy");
             (err as any).retryable = true;
-            reject(err);
+            safeReject(err);
           } else {
-            resolve(trimmedOutput);
+            safeResolve(trimmedOutput);
           }
         } else {
           const errMessage = isTimedOut
-            ? "Process timed out after 90 seconds"
+            ? `Process timed out after ${timeoutMs / 1000} seconds`
             : `agy process exited with code ${code}. Stderr: ${stderr.trim()}`;
           const err = new Error(errMessage);
-          if (isTimedOut) {
-            (err as any).retryable = true;
-          } else {
-            (err as any).retryable = false; // Do not retry critical process crashes
-          }
-          reject(err);
+          (err as any).retryable = false;
+          safeReject(err);
         }
       });
     });
