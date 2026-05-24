@@ -20,6 +20,14 @@ export let lastSpawnStdin = "";
 export let mockReaddirShouldThrow = false;
 export let mockAuditLogContent = "";
 export let mockExistsSyncResult = false;
+export let mockSpawnSyncOutput: {
+  stdout: string;
+  stderr: string;
+  status: number;
+  error?: Error;
+  stdoutQueue?: string[];
+} = { stdout: "", stderr: "", status: 0 };
+export let lastSpawnSyncArgs: string[] = [];
 
 // Setters to allow test files to modify the state in ESM
 export function setMockSpawnOutput(val: typeof mockSpawnOutput) { mockSpawnOutput = val; }
@@ -29,6 +37,8 @@ export function setLastSpawnStdin(val: string) { lastSpawnStdin = val; }
 export function setMockReaddirShouldThrow(val: boolean) { mockReaddirShouldThrow = val; }
 export function setMockAuditLogContent(val: string) { mockAuditLogContent = val; }
 export function setMockExistsSyncResult(val: boolean) { mockExistsSyncResult = val; }
+export function setMockSpawnSyncOutput(val: typeof mockSpawnSyncOutput) { mockSpawnSyncOutput = val; }
+export function setLastSpawnSyncArgs(val: string[]) { lastSpawnSyncArgs = val; }
 
 // Reset helper
 export function resetMockState() {
@@ -39,6 +49,8 @@ export function resetMockState() {
   mockReaddirShouldThrow = false;
   mockAuditLogContent = "";
   mockExistsSyncResult = false;
+  mockSpawnSyncOutput = { stdout: "", stderr: "", status: 0 };
+  lastSpawnSyncArgs = [];
 }
 
 mock.module("child_process", () => {
@@ -115,6 +127,26 @@ mock.module("child_process", () => {
       }
 
       return proc;
+    },
+    spawnSync: (cmd: string, args: string[], options: any) => {
+      lastSpawnSyncArgs = args;
+      if (mockSpawnSyncOutput.error) {
+        return {
+          error: mockSpawnSyncOutput.error,
+          status: mockSpawnSyncOutput.status,
+          stdout: mockSpawnSyncOutput.stdout,
+          stderr: mockSpawnSyncOutput.stderr
+        };
+      }
+      let stdout = mockSpawnSyncOutput.stdout;
+      if (mockSpawnSyncOutput.stdoutQueue && mockSpawnSyncOutput.stdoutQueue.length > 0) {
+        stdout = mockSpawnSyncOutput.stdoutQueue.shift()!;
+      }
+      return {
+        status: mockSpawnSyncOutput.status,
+        stdout: stdout,
+        stderr: mockSpawnSyncOutput.stderr
+      };
     }
   };
 });

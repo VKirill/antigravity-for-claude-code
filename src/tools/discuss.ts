@@ -1,6 +1,7 @@
 import { ROLE_PRESETS } from "../config.ts";
 import { sessionState } from "../state.ts";
 import { runAgy, getNewestConversationId } from "../utils/agy.ts";
+import { captureGitFiles, buildFooter } from "../utils/observability.ts";
 
 export async function handleDiscussWithAntigravity(args: any) {
   const prompt = String(args?.prompt || "");
@@ -54,6 +55,16 @@ export async function handleDiscussWithAntigravity(args: any) {
     cmdArgs.push("--continue=false");
   }
 
+  let cwd = ".";
+  try { cwd = process.env.PWD || process.cwd(); } catch { /* soft-fail */ }
+  let filesBefore: string[] = [];
+  try {
+    filesBefore = captureGitFiles(cwd);
+  } catch (e) {
+    // soft-fail
+  }
+  const t0 = Date.now();
+
   try {
     const responseText = await runAgy(cmdArgs, promptToSend);
     
@@ -66,11 +77,28 @@ export async function handleDiscussWithAntigravity(args: any) {
 
     const currentId = sessionState.activeConversationId || "unknown";
 
+    let footer = "";
+    try {
+      const filesAfter = captureGitFiles(cwd);
+      footer = buildFooter(filesBefore, filesAfter, Date.now() - t0);
+    } catch (e) {
+      // soft-fail with basic footer
+      try {
+        footer = `<!-- agy: ${((Date.now() - t0) / 1000).toFixed(1)}s -->`;
+      } catch (e2) {
+        footer = "";
+      }
+    }
+
+    const returnText = footer 
+      ? `${responseText}\n\n<!-- active_session_id: ${currentId} -->\n${footer}`
+      : `${responseText}\n\n<!-- active_session_id: ${currentId} -->`;
+
     return {
       content: [
         {
           type: "text",
-          text: `${responseText}\n\n<!-- active_session_id: ${currentId} -->`,
+          text: returnText,
         }
       ],
     };
