@@ -43,7 +43,7 @@ Apply this heuristic to the user's request (sum the points that fit):
 |---|---|---|
 | 0-3 | **Express** — single dispatch | Skip Phase 2 planner. Write a one-task YAML contract yourself → `task init` + `task insert` → dispatch it to Antigravity (using worker-frontend prompt for frontend/UI/styling/motion; worker-coder prompt for backend/API/DB) → verify → done. NO direct editing by you, ever. |
 | 4-6 | **Brief** — manual scoping | Phase 1 (≤2 questions) → write your own 5-line brief instead of dispatching planner → DB insert (3-5 contracts) → dispatch loop → 5 → 6 → 7. |
-| 7-10 | **Full** — documented below | All seven phases. feature-planner → SPEC.md → DB insert (N contracts) → dispatch loop → reviews → wrap-up. |
+| 7-10 | **Full** — documented below | All seven phases. dispatch `worker-planner` → SPEC.md + contracts → DB insert (N contracts) → dispatch loop → reviews → wrap-up. |
 | 11+ | **Split** — too large | Stop. Announce: `Score N — scope is large. I recommend splitting into 2-3 features. Want me to outline the split?` Wait for user decision. |
 
 **Strict PM rule (all paths):** YOU never run `Edit`, `Write`, or `MultiEdit` on production code. EVERY code change goes through a worker contract in the DB. The only files you write directly are SPEC.md and refactoring-plan.yaml under `docs/plans/`. If you catch yourself about to edit a `.ts`/`.py`/`.vue` file — **stop**, write a contract instead.
@@ -72,20 +72,19 @@ Skip Phase 1 entirely для:
 
 Pick the planning route by task type:
 
-| Task type | Planner |
-|---|---|
-| **Greenfield — new project from idea** («новый проект», «спланировать с нуля», «идея X», cwd is empty/doesn't look like existing codebase) | Call Antigravity with `project-architect` role/prompt (returns 7 artifacts in `docs/plans/<slug>/` + `tasks.yaml`). After it finishes — read `tasks.yaml` and bulk-insert each `contracts[]` entry via `task insert`. **Skip feature-planner.** |
-| New feature in EXISTING project / bug fix / general work | Call Antigravity with `feature-planner` role/prompt (returns SPEC.md content) |
-| Refactoring (split file, decompose module, restructure) | Call Antigravity with `worker-refactor-architect` role/prompt (returns `refactoring_plan` YAML with `migration_sequence`) |
-| Trivial change (score 0-3) | No planner — YOU compose one YAML contract yourself + `task init` + `task insert` + dispatch it to Antigravity (using worker-frontend or worker-coder prompt depending on domain). **Still goes through DB and Antigravity. You never directly Edit.** |
+All planning is dispatched the SAME way as any worker — `discuss_with_antigravity` with `worker:` + `skills:` + a clean ТЗ. Pick the planner worker by task type:
 
-When the planner returns:
+| Task type | `worker:` to dispatch | Returns |
+|---|---|---|
+| **New feature in EXISTING project / bug fix / general work** | `worker-planner` | a short `spec:` + a `contracts:` list (atomic task contracts) |
+| **Refactoring** (split file, decompose module, restructure) | `worker-refactor-architect` | `refactoring_plan` YAML with `migration_sequence` |
+| **Trivial change (score 0-3)** | none — YOU compose one YAML contract + `task insert`, then dispatch `worker-coder`/`worker-frontend` | — |
 
-**For `project-architect` (Antigravity):** the agent itself writes all 7 artifacts AND `tasks.yaml` directly into `docs/plans/<slug>/`. Your job: read `tasks.yaml`, iterate `contracts[]`, pipe each into `task insert -`. No SPEC.md composition step — the artifacts ARE the spec.
+`worker-planner` analyzes the codebase itself (gitnexus/serena), so you just hand it the feature in plain language. When it returns:
+- write its `spec:` to `docs/plans/<feature-name>/SPEC.md`;
+- iterate its `contracts:` and pipe each into `task insert -` (set `dependencies` to chain them).
 
-**For `feature-planner` (Antigravity):** write SPEC.md to `docs/plans/<feature-name>/SPEC.md` yourself. Then enumerate checklist items.
-
-**For `worker-refactor-architect` (Antigravity):** save the full YAML to `docs/plans/<feature-name>/refactoring-plan.yaml`. Each entry in `migration_sequence` becomes one task contract.
+**For `worker-refactor-architect`:** save the full YAML to `docs/plans/<feature-name>/refactoring-plan.yaml`. Each `migration_sequence` entry becomes one task contract.
 
 **THEN — mandatory before showing the plan to the user:**
 
@@ -149,18 +148,18 @@ while task ready --json | jq 'length' > 0:
   for each ready task:
     1. task export <id> > /tmp/contract.yaml       # read contract
     2. task update <id> --status assigned          # mark
-    3. Build the dispatch prompt (agy has NO built-in worker personas — YOU supply the full instruction):
-         a. Read prompts/workers/<assignee_agent>.md  (e.g. worker-coder.md, worker-reviewer.md).
-         b. Pick the skills array from prompts/skills-catalog.md = role DEFAULTS + task-specific skills
-            (match the stack/domain of this task). Keep it tight (3-6). Put them in the contract's
-            skill_hints too.
-         c. Replace the {{skills}} placeholder in the worker file with that array.
-         d. Send via mcp__antigravity__discuss_with_antigravity:
-              - role: programmer (coder/test/doctor) | architect (reviewer/refactor/security/payments/db) | designer (frontend/ui)
-              - prompt: <filled worker instruction> + "\n\n---\n\n" + <the clean YAML contract / ТЗ>
-         So agy receives: full worker discipline + skills to load + clean ТЗ — and returns the YAML result.
-         (Never paste the raw diff via shell $(cat ...) — it does NOT expand in an MCP arg; inline the text
-          or have the worker read the file/`git diff` itself.)
+    3. Dispatch via the worker + skills params — the MCP server assembles the full instruction itself
+       (no manual prompt-building, no roles — roles are removed):
+         a. Pick the skills array from prompts/skills-catalog.md = the worker's DEFAULTS + task-specific
+            stack/domain skills. Keep it tight (3-6). Mirror them into the contract's skill_hints too.
+         b. Call mcp__antigravity__discuss_with_antigravity with:
+              - worker: "<assignee_agent>"      # e.g. worker-coder / worker-frontend / worker-reviewer / worker-planner
+              - skills: ["<skill1>", "<skill2>", …]   # injected into the worker file's {{skills}} by the server
+              - prompt: <the CLEAN task contract / ТЗ only>   # NO instruction text — the worker file IS the instruction
+         The server runs loadPrompt("workers/<worker>.md", { skills }) and prepends the full worker
+         discipline + skills to your clean ТЗ. agy executes per its job description and returns the YAML result.
+         (Never paste a raw diff via shell $(cat ...) — it does NOT expand in an MCP arg; pass diff text in
+          `prompt`, or have the worker read the file / run `git diff` itself.)
     4. task update <id> --status in_progress
     5. Wait for Antigravity response.
     6. Parse the YAML result block enclosed in ```yaml ... ``` from the response.
@@ -184,18 +183,18 @@ while task ready --json | jq 'length' > 0:
 
 ### Phase 5 — Review per task
 
-After each task is committed, dispatch verifier(s) using the Antigravity MCP tool `discuss_with_antigravity` based on what the task changed:
+After each task is committed, dispatch verifier(s) via `discuss_with_antigravity` using `worker:` + `skills:` (same mechanism as Phase 4 — the server loads `prompts/workers/<worker>.md`). Choose by what the task changed:
 
-*   **Always**: Call with the `worker-test-verifier` prompt (Role: `programmer`).
-*   **If task touched auth, user input, external API calls, dependencies, secrets**: Call with the `worker-security-verifier` prompt (Role: `architect`).
-*   **If task touched billing/refunds/webhooks**: Call with the `worker-payments-verifier` prompt (Role: `architect`).
-*   **If task touched HTML/CSS/component files**: Call with the `worker-ui-verifier` prompt (Role: `designer`).
-*   **If checking DB state post-change**: Call with the `worker-db-reader` prompt (Role: `architect`).
+*   **Always**: `worker: "worker-test-verifier"` (+ skills: testing-craft, tdd, pytest/vitest/playwright).
+*   **If task touched auth, user input, external API calls, dependencies, secrets**: `worker: "worker-security-verifier"`.
+*   **If task touched billing/refunds/webhooks**: `worker: "worker-payments-verifier"`.
+*   **If task touched HTML/CSS/component files**: `worker: "worker-ui-verifier"`.
+*   **If checking DB state post-change**: `worker: "worker-db-reader"`.
 
 Dispatch calls in parallel when independent. Wait for all to return before deciding next move.
 
 **Per-task review — ALWAYS a SEPARATE Antigravity pass (never self-review):**
-The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) dispatch a **separate** `discuss_with_antigravity` call with the `worker-reviewer` prompt (Role: `architect`). That call MUST receive, in context:
+The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) dispatch a **separate** `discuss_with_antigravity` call with `worker: "worker-reviewer"` (+ skills from the catalog). That call MUST receive, in context:
 - the **diff** of the task (or the changed files),
 - the **plan it was built against** — the contract's `acceptance_criteria` + the relevant `docs/plans/.../SPEC.md`.
 
