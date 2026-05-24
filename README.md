@@ -47,7 +47,7 @@ On top of delegation you also get tools for **multi-role AI debates** (structure
 │   scores → plans → dispatches → verifies → reviews → ships│
 └──────────────────────────┬───────────────────────────────┘
                            │  MCP: discuss_with_antigravity
-                           │  (YAML contract + role)
+                           │  (worker + skills[] + clean ТЗ)
 ┌──────────────────────────▼───────────────────────────────┐
 │                  Antigravity MCP Server                   │
 │   spawns agy (detached, timeout-guarded), parses result   │
@@ -102,7 +102,7 @@ These guide Gemini to act as a professional coder, architect, or designer:
 
 | Tool | What it does |
 |---|---|
-| `discuss_with_antigravity` | Multi-turn discussion / task delegation. Auto-detects a task ID (e.g. `id: TASK-NNN`) from the prompt to keep a task-scoped conversation. Accepts a `role` (`designer`, `copywriter`, `programmer`, `architect`). |
+| `discuss_with_antigravity` | Multi-turn discussion / task delegation. Pass `worker` (a `prompts/workers/<name>.md` instruction, e.g. `worker-coder`) + `skills` (string array, injected into the worker file's `{{skills}}` placeholder) + a clean `prompt` (the task / ТЗ) — the server assembles the full worker instruction server-side. Also accepts `conversationId` and a custom `systemPrompt`; auto-detects `id: TASK-NNN` from the prompt for a task-scoped conversation. |
 | `reset_antigravity_session` | Clear the active discussion session from memory. |
 | `run_debate_deliberation` | Autonomous multi-persona debate (Optimist, Skeptic, Devil's Advocate…) ending in an ADR. |
 | `run_interactive_debate` | Interactive debate where you act as Judge/Architect and steer the personas, culminating in a structured ADR. |
@@ -189,6 +189,8 @@ Makes the validator executable and registers it in `~/.gemini/antigravity-cli/ho
 |---|---|---|
 | `AGY_TIMEOUT_MS` | `1200000` | Hard timeout (ms) for an `agy` call. On timeout the whole process group is killed and the call fails non-retryably (so half-done edits aren't re-run). The server also passes `--print-timeout` to `agy` derived from this (`value/1000 − 20s`). |
 | `AGY_EXIT_FALLBACK_MS` | `1500` | Grace window (ms) after the process exits before the bridge force-resolves with the buffered output — this is what prevents hangs when `agy`'s engine keeps a pipe open. |
+| `AGY_BIN` | `agy` | Path/name of the Antigravity CLI binary (resolved via `PATH`). Override if `agy` isn't on `PATH`. |
+| `AGY_LIFECYCLE_LOG` | _(unset)_ | If set to a file path, the server appends one concise JSON line per lifecycle event (`dispatch`, `agy.spawn`, `agy.done`, `agy.timeout`, `agy.error`) — sizes/metadata only, never prompt/response bodies. `tail -f` it to watch dispatch live. Unset = no logging. |
 
 > **Timeout layering.** Three limits stack and must stay ordered
 > `agy --print-timeout  <  AGY_TIMEOUT_MS  <  Claude Code's MCP tool timeout`.
