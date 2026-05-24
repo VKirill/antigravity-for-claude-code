@@ -33,7 +33,7 @@ On top of delegation you also get tools for **multi-role AI debates** (structure
 - 🧠 **16 developer skills** — clean-code rules, frontend stacks, testing and editorial guidelines that steer Gemini.
 - 🗣️ **AI debates & reviews** — autonomous or interactive multi-persona deliberations, code review, and quick advice.
 - 🛡️ **Quality hooks** — block `@ts-ignore` / hardcoded HEX colors before they reach disk.
-- 🚀 **Main-only autopilot** — the `dev-orchestrator-test` agent works directly on `main`, commits per task, and auto-deploys when all gates pass.
+- 🚀 **Main-only autopilot** — the `dev-orchestrator-agy` agent works directly on `main`, commits per task, and auto-deploys when all gates pass.
 - ⏱️ **Reliable bridge** — robust subprocess lifecycle (no hangs), per-call timing, and a `files_changed` footer on every response.
 
 ---
@@ -43,7 +43,7 @@ On top of delegation you also get tools for **multi-role AI debates** (structure
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                      Claude Code                          │
-│         (dev-orchestrator-test — the PM agent)            │
+│         (dev-orchestrator-agy — the PM agent)            │
 │   scores → plans → dispatches → verifies → reviews → ships│
 └──────────────────────────┬───────────────────────────────┘
                            │  MCP: discuss_with_antigravity
@@ -61,7 +61,7 @@ On top of delegation you also get tools for **multi-role AI debates** (structure
 
 ### How the orchestrator thinks
 
-The `dev-orchestrator-test` agent runs a 7-phase cycle, gated by a complexity score:
+The `dev-orchestrator-agy` agent runs a 7-phase cycle, gated by a complexity score:
 
 1. **Phase 0 — Score.** A heuristic (0–11+) decides the path: Express (single dispatch), Brief, Full (SPEC + N contracts), or Split (too big).
 2. **Phase 1–2 — Understand & plan.** Minimal questions, then a SPEC and a set of YAML task contracts persisted to a local SQLite DB (`.claude/orchestrator.db`).
@@ -78,7 +78,7 @@ The user observes progress from any terminal with `task list`, `task show <id>`,
 
 * `src/` — MCP server source (TypeScript, run/built with Bun).
 * `dist/` — Compiled MCP server (Node target).
-* `agents/` — Orchestrator agents: `dev-orchestrator-test.md` (main-only autopilot) and `dev-orchestrator.md`.
+* `agents/` — Orchestrator agents: `dev-orchestrator-agy.md` (main-only autopilot) and `dev-orchestrator.md`.
 * `skills/` — 16 developer skills with rules and instructions for Gemini.
 * `examples/` — Client examples in TypeScript, Python, Go, and Bash.
 * `scripts/` — Hook validator (`validate-tool-call.cjs`) and helpers.
@@ -150,11 +150,11 @@ Add it to your `~/.claude.json` (use the **absolute path** to your clone):
 ### 3. Install the orchestrator agent
 ```bash
 mkdir -p ~/.claude/agents
-cp agents/dev-orchestrator-test.md ~/.claude/agents/
+cp agents/dev-orchestrator-agy.md ~/.claude/agents/
 ```
 Run it inside any project directory:
 ```bash
-claude --agent dev-orchestrator-test
+claude --agent dev-orchestrator-agy
 ```
 This agent dispatches 100% of coding/verification work to the Antigravity MCP server with tailored roles and 2026 best-practice prompts. It works directly on `main` and auto-deploys when all gates pass.
 

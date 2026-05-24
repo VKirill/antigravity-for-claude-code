@@ -52,9 +52,9 @@
 - Keep commits focused — one logical change per commit
 - Do not include unrelated edits in a commit just because they were in the worktree
 
-> **Exception — dev-orchestrator agents (`dev-orchestrator`, `dev-orchestrator-test`).**
+> **Exception — dev-orchestrator agents (`dev-orchestrator`, `dev-orchestrator-agy`).**
 > These agents are explicitly authorized to **auto-push to `origin/main` and auto-deploy by default, without asking**, once all verifier + review gates pass — that is their designed Phase 7 behavior and counts as standing "explicit ask".
-> `dev-orchestrator-test` additionally works with **`main` as the working branch** — it commits directly to `main` and never creates feature branches or worktrees.
+> `dev-orchestrator-agy` additionally works with **`main` as the working branch** — it commits directly to `main` and never creates feature branches or worktrees.
 > The conservative rules above (no push without confirmation, no main push without ask) remain the default for ALL other contexts — normal interactive sessions and any non-orchestrator agent.
 > **Force-push to `main` stays forbidden in every context, including these agents** — the orchestrator push path is strictly fast-forward-only with no override.
 
