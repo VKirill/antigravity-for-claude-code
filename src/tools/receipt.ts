@@ -3,21 +3,13 @@ import { join } from "path";
 import os from "os";
 import { sessionState } from "../state.ts";
 import { runAgy, getNewestConversationId } from "../utils/agy.ts";
+import { loadPrompt } from "../utils/prompts.ts";
 
 const RECEIPT_PROMPTS = {
   ru: {
-    prompt: `Пожалуйста, проанализируй историю текущей сессии дебатов и сформируй структурированный отчет на русском языке.
-
-Отчет должен содержать следующие разделы:
-1. **Тема обсуждения** (краткое резюме обсуждаемой проблемы).
-2. **Сводная таблица участников**: для каждой роли/персоны (например, Оптимист, Скептик, Соглашатель, Хейтер), которая принимала участие:
-   - Участник (Роль)
-   - Основной тезис (Claim)
-   - Аргументы и доказательства (Evidence)
-3. **Отвергнутые альтернативы**: перечень вариантов решений или идей, которые были предложены другими участниками дебатов, но отвергнуты (с указанием причин).
-4. **Итоговое принятое решение**: компромиссы, итоговая архитектура или соглашения, к которым пришли участники.
-
-Отвечай строго на русском языке в формате Markdown. Начни сразу с заголовка "# Чек дебатов (Debate Receipt)" и не пиши никаких вводных слов от себя.`,
+    get prompt() {
+      return loadPrompt("tools/debate-receipt.ru.md");
+    },
     error: (id: string, msg: string) => `# Чек дебатов (Сессия: ${id})\n\nНе удалось автоматически проанализировать сессию с помощью AI: ${msg}.`,
     hooksAudit: "\n\n## Аудит безопасности и изменений (Hooks Audit)\n\n",
     allowedChanges: "### Успешные изменения файлов\n\n",
@@ -35,18 +27,9 @@ const RECEIPT_PROMPTS = {
 > Попыток нарушения правил кодирования (использование \`@ts-ignore\` или жестко заданных цветов) в этой сессии не зафиксировано.\n\n`
   },
   en: {
-    prompt: `Please analyze the history of the current debate session and generate a structured report in English.
-
-The report must contain the following sections:
-1. **Debate Topic** (brief summary of the discussed problem).
-2. **Participants Summary Table**: for each role/persona (e.g. Optimist, Skeptic, Agreer, Hater) that participated:
-   - Participant (Role)
-   - Core claim (Claim)
-   - Arguments and evidence (Evidence)
-3. **Rejected Alternatives**: list of proposed options or ideas that were rejected (with reasons).
-4. **Final Decision**: compromises, final architecture, or agreements reached.
-
-Respond strictly in English in Markdown format. Start directly with the header "# Debate Receipt" and do not write any introductory text.`,
+    get prompt() {
+      return loadPrompt("tools/debate-receipt.en.md");
+    },
     error: (id: string, msg: string) => `# Debate Receipt (Session: ${id})\n\nFailed to automatically analyze the session using AI: ${msg}.`,
     hooksAudit: "\n\n## Hooks & Security Audit\n\n",
     allowedChanges: "### Approved File Modifications\n\n",

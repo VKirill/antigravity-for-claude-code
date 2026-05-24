@@ -1,43 +1,46 @@
 import { writeFileSync } from "fs";
-import { DEBATE_PERSONAS } from "../config.ts";
 import { sessionState } from "../state.ts";
 import { runAgy, getNewestConversationId } from "../utils/agy.ts";
 import { handleGetDebateReceipt } from "./receipt.ts";
+import { loadPrompt } from "../utils/prompts.ts";
 
 const DEBATE_PROMPTS: Record<string, any> = {
   ru: {
-    optimist: (topic: string) => `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]\n\nТема для дебатов: ${topic}\n\nПредложи начальную архитектуру или техническое решение.`,
-    skeptic: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]\n\nИзучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`,
-    agreer: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]\n\nИзучи предложение Оптимиста и замечания Скептика. Поддержи Оптимиста, похвали простоту, предложи срезать углы ради быстрой разработки и обойтись без сложных проверок.`,
-    hater: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]\n\nИзучи ход дебатов. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`,
-    optimist_defend: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]\n\nИзучи все замечания (критику Скептика, предложения Соглашателя и хейт Пессимиста). Защити проект и предложи доработанное сбалансированное решение, отвечающее на все выпады.`,
-    skeptic_review: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]\n\nИзучи доработанное предложение Оптимиста. Напиши краткую рецензию: остались ли логические нестыковки? Решены ли каверзные вопросы?`,
-    hater_persist: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]\n\nИзучи доработанное предложение Оптимиста. Все еще ли проект обречен на провал? Найди новые причины для токсичного пессимизма.`,
-    synthesizer: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]\n\nИзучи весь ход дебатов. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение, компромиссы (trade-offs) и список рисков с их минимизацией.`,
+    optimist: (topic: string) => loadPrompt("rounds/ru/optimist.md", { topic }),
+    get skeptic() { return loadPrompt("rounds/ru/skeptic.md"); },
+    get agreer() { return loadPrompt("rounds/ru/agreer.md"); },
+    get hater() { return loadPrompt("rounds/ru/hater.md"); },
+    get optimist_defend() { return loadPrompt("rounds/ru/optimist_defend.md"); },
+    get skeptic_review() { return loadPrompt("rounds/ru/skeptic_review.md"); },
+    get hater_persist() { return loadPrompt("rounds/ru/hater_persist.md"); },
+    get synthesizer() { return loadPrompt("rounds/ru/synthesizer.md"); },
   },
   en: {
-    optimist: (topic: string) => `[SYSTEM PROMPT FOR ROLE: You are the Optimist (Engineer-Developer). Your goal is to propose creative and robust technical solutions. Your tone: enthusiastic developer ready to build.]\n\nDebate topic: ${topic}\n\nPropose an initial architecture or technical solution in English.`,
-    skeptic: `[SYSTEM PROMPT FOR ROLE: You are the Skeptic (Logic Critic). Your goal is to find weaknesses in the proposal, question logic, ask challenging questions, and point out redundant complexity. Your tone: constructive critic.]\n\nAnalyze the Optimist's initial proposal. Ask tough questions and point out logical inconsistencies in English.`,
-    agreer: `[SYSTEM PROMPT FOR ROLE: You are the Agreer. Your goal is to agree with the Optimist, praise the simplicity of the solution, suggest cutting corners for speed of development, and ignore complex validations. Your tone: friendly, pleasing, seeking easy paths.]\n\nStudy the Optimist's proposal and the Skeptic's feedback. Support the Optimist, praise the simplicity, and suggest cutting corners to ship faster without complex checks in English.`,
-    hater: `[SYSTEM PROMPT FOR ROLE: You are the Hater (Toxic Pessimist). Your goal is to express strong doubts and argue that the project is doomed to fail. Bring up real-world failures and toxic skepticism. Your tone: sarcastic, cynical.]\n\nAnalyze the debate. Speak out strongly against this initiative: explain why the project will fail, give examples of real-world failures of similar systems, add cynical doubts, and claim it will crash in English.`,
-    optimist_defend: `[SYSTEM PROMPT FOR ROLE: You are the Optimist.]\n\nStudy all comments (Skeptic's critique, Agreer's proposals, and Hater's skepticism). Defend the project and propose a refined, balanced solution addressing all concerns in English.`,
-    skeptic_review: `[SYSTEM PROMPT FOR ROLE: You are the Skeptic.]\n\nStudy the refined proposal from the Optimist. Write a brief review in English: are there still logical inconsistencies? Have the tough questions been answered?`,
-    hater_persist: `[SYSTEM PROMPT FOR ROLE: You are the Hater.]\n\nStudy the refined proposal from the Optimist. Is the project still doomed to fail? Find new reasons for toxic pessimism in English.`,
-    synthesizer: `[SYSTEM PROMPT FOR ROLE: You are the Synthesizer (Lead Architect). Your goal is to weigh all opinions, find compromises, and write a final Architecture Decision Record (ADR) in English. Your tone: authoritative, balanced, constructive.]\n\nAnalyze the entire debate history. Write the final structured Architecture Decision Record (ADR) in English. It must include: topic, context, final decision, trade-offs, and risk mitigation list.`,
+    optimist: (topic: string) => loadPrompt("rounds/en/optimist.md", { topic }),
+    get skeptic() { return loadPrompt("rounds/en/skeptic.md"); },
+    get agreer() { return loadPrompt("rounds/en/agreer.md"); },
+    get hater() { return loadPrompt("rounds/en/hater.md"); },
+    get optimist_defend() { return loadPrompt("rounds/en/optimist_defend.md"); },
+    get skeptic_review() { return loadPrompt("rounds/en/skeptic_review.md"); },
+    get hater_persist() { return loadPrompt("rounds/en/hater_persist.md"); },
+    get synthesizer() { return loadPrompt("rounds/en/synthesizer.md"); },
   }
 };
 
 const INTERACTIVE_PROMPTS: Record<string, any> = {
   ru: {
-    optimist: (topic: string) => `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.optimist}]\n\nТема для дебатов: ${topic}\n\nПредложи начальную архитектуру или техническое решение.`,
-    skeptic: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.skeptic}]\n\nИзучи предыдущее предложение Оптимиста. Задай неудобные каверзные вопросы к предложенному решению, укажи на логические нестыковки.`,
-    agreer: (comment: string) => `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:\n${comment}\n\n[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.agreer}]\n\nИзучи предложение Оптимиста, критику Скептика и комментарий Судьи. Поддержи Оптимиста и Судью, похвали простоту, предложи срезать углы ради быстрой разработки.`,
-    hater: `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.hater}]\n\nИзучи ход дебатов и комментарий Судьи. Выскажись резко против этой затеи: объясни, почему проект обречен на провал, приведи примеры аналогичных неудач из жизни, накинь токсичных сомнений и утверждай, что всё рухнет.`,
+    optimist: (topic: string) => loadPrompt("rounds/ru/optimist.md", { topic }),
+    get skeptic() { return loadPrompt("rounds/ru/skeptic.md"); },
+    agreer: (comment: string) => loadPrompt("rounds/ru/agreer.interactive.md", { comment }),
+    get hater() { return loadPrompt("rounds/ru/hater.interactive.md"); },
     synthesizer: (comment?: string) => {
-      let p = "";
-      if (comment) p += `[КОММЕНТАРИЙ СУДЬИ/ПОЛЬЗОВАТЕЛЯ]:\n${comment}\n\n`;
-      p += `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${DEBATE_PERSONAS.synthesizer}]\n\nИзучи весь ход дебатов, включая комментарии Судьи. Составь итоговый структурированный документ Architecture Decision Record (ADR) на русском языке. Он должен включать: тему, контекст обсуждения, итоговое принятое решение (с учетом финального мнения Судьи), компромиссы (trade-offs) и список рисков с их минимизацией.`;
-      return p;
+      const prompt = loadPrompt("rounds/ru/synthesizer.interactive.md");
+      if (comment) {
+        return prompt.split("{{comment}}").join(comment);
+      } else {
+        const index = prompt.indexOf("[СИСТЕМНЫЙ ПРОМПТ");
+        return prompt.slice(index);
+      }
     },
     title: (topic: string) => `# Интерактивные дебаты: ${topic}\n`,
     finalizeTitle: (id: string) => `# Финализация дебатов (Сессия: ${id})\n\n`,
@@ -46,15 +49,18 @@ const INTERACTIVE_PROMPTS: Record<string, any> = {
     nextStepsCont: "Или завершите дебаты и сгенерируйте итоговый ADR, передав `action: \"finalize\"`.\n\n",
   },
   en: {
-    optimist: (topic: string) => `[SYSTEM PROMPT FOR ROLE: You are the Optimist (Engineer-Developer). Your goal is to propose creative and robust technical solutions. Your tone: enthusiastic developer ready to build.]\n\nDebate topic: ${topic}\n\nPropose an initial architecture or technical solution in English.`,
-    skeptic: `[SYSTEM PROMPT FOR ROLE: You are the Skeptic (Logic Critic). Your goal is to find weaknesses in the proposal, question logic, ask challenging questions, and point out redundant complexity. Your tone: constructive critic.]\n\nAnalyze the Optimist's initial proposal. Ask tough questions and point out logical inconsistencies in English.`,
-    agreer: (comment: string) => `[JUDGE/USER COMMENT]:\n${comment}\n\n[SYSTEM PROMPT FOR ROLE: You are the Agreer. Your goal is to agree with the Optimist and the Judge, praise the simplicity of the solution, suggest cutting corners for speed of development, and ignore complex validations.]\n\nStudy the Optimist's proposal, the Skeptic's feedback, and the Judge's comment. Support the Optimist and the Judge, praise the simplicity, and suggest cutting corners to ship faster in English.`,
-    hater: `[SYSTEM PROMPT FOR ROLE: You are the Hater (Toxic Pessimist). Your goal is to express strong doubts and argue that the project is doomed to fail. Bring up real-world failures and toxic skepticism.]\n\nAnalyze the debate and the Judge's comment. Speak out strongly against this initiative: explain why the project will fail, give examples of real-world failures, add cynical doubts, and claim it will crash in English.`,
+    optimist: (topic: string) => loadPrompt("rounds/en/optimist.md", { topic }),
+    get skeptic() { return loadPrompt("rounds/en/skeptic.md"); },
+    agreer: (comment: string) => loadPrompt("rounds/en/agreer.interactive.md", { comment }),
+    get hater() { return loadPrompt("rounds/en/hater.interactive.md"); },
     synthesizer: (comment?: string) => {
-      let p = "";
-      if (comment) p += `[JUDGE/USER COMMENT]:\n${comment}\n\n`;
-      p += `[SYSTEM PROMPT FOR ROLE: You are the Synthesizer (Lead Architect). Your goal is to weigh all opinions, consider the Judge's final input, and write a final Architecture Decision Record (ADR) in English.]\n\nAnalyze the entire debate history, including the Judge's comments. Write the final structured Architecture Decision Record (ADR) in English. It must include: topic, context, final decision (taking the Judge's final view into account), trade-offs, and risk mitigation list.`;
-      return p;
+      const prompt = loadPrompt("rounds/en/synthesizer.interactive.md");
+      if (comment) {
+        return prompt.split("{{comment}}").join(comment);
+      } else {
+        const index = prompt.indexOf("[SYSTEM PROMPT");
+        return prompt.slice(index);
+      }
     },
     title: (topic: string) => `# Interactive Debate: ${topic}\n`,
     finalizeTitle: (id: string) => `# Debate Finalization (Session: ${id})\n\n`,

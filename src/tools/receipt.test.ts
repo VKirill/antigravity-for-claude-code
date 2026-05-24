@@ -2,11 +2,13 @@ import { test, expect, describe, beforeEach, beforeAll } from "bun:test";
 import { MockTransport, resetMockState, setMockSpawnOutput, setMockFiles, setMockExistsSyncResult, setMockAuditLogContent } from "../test-setup.ts";
 import { server } from "../index.ts";
 import { sessionState, resetTestState } from "../state.ts";
+import path from "path";
 
 describe("receipt.ts tool tests", () => {
   let transport: MockTransport;
 
   beforeAll(async () => {
+    process.env.ANTIGRAVITY_PROMPTS_DIR = path.resolve(import.meta.dir, "../../prompts");
     transport = new MockTransport();
     try {
       await server.close();
