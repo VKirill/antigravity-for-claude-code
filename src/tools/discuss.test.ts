@@ -142,28 +142,7 @@ describe("discuss.ts tool tests", () => {
     expect(sessionState.activeConversationId).toBe("TASK-456");
   });
 
-  test("discuss_with_antigravity - prepends system prompt for preset roles", async () => {
-    setMockSpawnOutput({ stdout: "Designer response", stderr: "", code: 0 });
-    setMockFiles([{ name: "session-role.pb", mtime: 1000 }]);
 
-    transport.simulateReceive({
-      jsonrpc: "2.0",
-      method: "tools/call",
-      params: {
-        name: "discuss_with_antigravity",
-        arguments: {
-          prompt: "Redesign the button.",
-          role: "designer"
-        }
-      },
-      id: 6
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    expect(lastSpawnStdin).toContain("[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: Ты — опытный UI/UX дизайнер");
-    expect(lastSpawnStdin).toContain("Redesign the button.");
-  });
 
   test("discuss_with_antigravity - prepends custom systemPrompt", async () => {
     setMockFiles([{ name: "session-custom.pb", mtime: 1000 }]);
@@ -184,34 +163,11 @@ describe("discuss.ts tool tests", () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(lastSpawnStdin).toContain("[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: Be extremely concise and rude.]");
+    expect(lastSpawnStdin).toContain("[СИСТЕМНЫЙ ПРОМПТ: Be extremely concise and rude.]");
     expect(lastSpawnStdin).toContain("Say hello");
   });
 
-  test("discuss_with_antigravity - handles combination of preset role and custom systemPrompt", async () => {
-    setMockFiles([{ name: "session-combo.pb", mtime: 1000 }]);
-    setMockSpawnOutput({ stdout: "Combo response", stderr: "", code: 0 });
 
-    transport.simulateReceive({
-      jsonrpc: "2.0",
-      method: "tools/call",
-      params: {
-        name: "discuss_with_antigravity",
-        arguments: {
-          prompt: "Explain",
-          role: "programmer",
-          systemPrompt: "Additionally, answer in English."
-        }
-      },
-      id: 8
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    expect(lastSpawnStdin).toContain("Ты — Senior Software Engineer.");
-    expect(lastSpawnStdin).toContain("Additionally, answer in English.");
-    expect(lastSpawnStdin).toContain("Explain");
-  });
 
   test("discuss_with_antigravity - returns error response when process fails", async () => {
     setMockSpawnOutput({ stdout: "", stderr: "Fatal API error", code: 1 });
@@ -294,14 +250,13 @@ describe("discuss.ts tool tests", () => {
     });
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // 2. Reset session and pre-configure role
+    // 2. Reset session and pre-configure systemPrompt
     transport.simulateReceive({
       jsonrpc: "2.0",
       method: "tools/call",
       params: {
         name: "reset_antigravity_session",
         arguments: {
-          role: "architect",
           systemPrompt: "Design systems only."
         }
       },
@@ -310,14 +265,13 @@ describe("discuss.ts tool tests", () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(sessionState.activeConversationId).toBeNull();
-    expect(sessionState.pendingRole).toBe("architect");
     expect(sessionState.pendingSystemPrompt).toBe("Design systems only.");
 
     const resetResponse: any = transport.sentMessages[1];
     expect(resetResponse.result.content[0].text).toContain("session has been reset");
-    expect(resetResponse.result.content[0].text).toContain("architect");
+    expect(resetResponse.result.content[0].text).toContain("Design systems only.");
 
-    // 3. Next message should use the pending role and new session
+    // 3. Next message should use the pending systemPrompt and new session
     setMockFiles([{ name: "session-new.pb", mtime: 2000 }]);
     transport.simulateReceive({
       jsonrpc: "2.0",
@@ -331,8 +285,8 @@ describe("discuss.ts tool tests", () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(lastSpawnArgs).toContain("--continue=false");
-    expect(lastSpawnStdin).toContain("Ты — Software Architect.");
-    expect(lastSpawnStdin).toContain("Design systems only.");
+    expect(lastSpawnStdin).toContain("[СИСТЕМНЫЙ ПРОМПТ: Design systems only.]");
+    expect(lastSpawnStdin).toContain("Design a bridge");
   });
 
   test("discuss_with_antigravity - appends observability footer with changed files", async () => {
@@ -412,9 +366,9 @@ describe("discuss.ts tool tests", () => {
     expect(response.result.content[0].text).toContain("worker prompt not found");
   });
 
-  test("discuss_with_antigravity - skills: ['zod'] + role: 'programmer' (no worker)", async () => {
-    setMockFiles([{ name: "session-role-skills.pb", mtime: 1000 }]);
-    setMockSpawnOutput({ stdout: "Programmer response", stderr: "", code: 0 });
+  test("discuss_with_antigravity - custom systemPrompt + skills (no worker, new conversation)", async () => {
+    setMockFiles([{ name: "session-custom-skills.pb", mtime: 1000 }]);
+    setMockSpawnOutput({ stdout: "Custom with skills response", stderr: "", code: 0 });
 
     transport.simulateReceive({
       jsonrpc: "2.0",
@@ -422,17 +376,17 @@ describe("discuss.ts tool tests", () => {
       params: {
         name: "discuss_with_antigravity",
         arguments: {
-          prompt: "Implement schema validation",
-          role: "programmer",
-          skills: ["zod"]
+          prompt: "Write logic",
+          systemPrompt: "Solve this simply.",
+          skills: ["zod", "typescript"]
         }
       },
-      id: 22
+      id: 23
     });
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(lastSpawnStdin).toContain("Загрузи эти скиллы");
-    expect(lastSpawnStdin).toContain("zod");
+    expect(lastSpawnStdin).toContain("[СИСТЕМНЫЙ ПРОМПТ: Solve this simply.\n\nЗагрузи эти скиллы перед работой (прочти SKILL.md каждого): zod, typescript]");
+    expect(lastSpawnStdin).toContain("Write logic");
   });
 });

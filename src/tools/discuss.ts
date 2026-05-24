@@ -1,4 +1,3 @@
-import { getRolePreset } from "../config.ts";
 import { sessionState } from "../state.ts";
 import { runAgy, getNewestConversationId } from "../utils/agy.ts";
 import { captureGitFiles, buildFooter } from "../utils/observability.ts";
@@ -36,35 +35,17 @@ export async function handleDiscussWithAntigravity(args: any) {
       return { content: [{ type: "text", text: `Error: worker prompt not found: ${worker}` }], isError: true };
     }
   } else {
-    // If it's a new conversation, inject system instructions/roles
+    let systemPromptText = String(args?.systemPrompt || sessionState.pendingSystemPrompt || "");
+    if (skills.length > 0) {
+      systemPromptText = systemPromptText
+        ? systemPromptText + "\n\nЗагрузи эти скиллы перед работой (прочти SKILL.md каждого): " + skillsStr
+        : "Загрузи эти скиллы перед работой (прочти SKILL.md каждого): " + skillsStr;
+    }
     if (!conversationIdToUse) {
-      const selectedRole = args?.role ? String(args.role) : sessionState.pendingRole;
-      const selectedSystemPrompt = args?.systemPrompt ? String(args.systemPrompt) : sessionState.pendingSystemPrompt;
-
-      let systemPromptText = "";
-      if (selectedRole) {
-        const preset = getRolePreset(selectedRole);
-        if (preset) {
-          systemPromptText = preset;
-        }
-      }
-
-      if (selectedSystemPrompt) {
-        systemPromptText = systemPromptText
-          ? `${systemPromptText}\n\nДополнительные системные инструкции:\n${selectedSystemPrompt}`
-          : selectedSystemPrompt;
-      }
-
-      if (skills.length > 0 && systemPromptText) {
-        systemPromptText = `${systemPromptText}\n\nЗагрузи эти скиллы перед работой (прочти SKILL.md каждого): ${skillsStr}`;
-      }
-
       if (systemPromptText) {
-        promptToSend = `[СИСТЕМНЫЙ ПРОМПТ ДЛЯ РОЛИ: ${systemPromptText}]\n\n${prompt}`;
+        promptToSend = `[СИСТЕМНЫЙ ПРОМПТ: ${systemPromptText}]\n\n${prompt}`;
       }
-
       // Clear pending configurations as they are now consumed
-      sessionState.pendingRole = null;
       sessionState.pendingSystemPrompt = null;
     }
   }
@@ -139,11 +120,10 @@ export async function handleDiscussWithAntigravity(args: any) {
 export async function handleResetAntigravitySession(args: any) {
   sessionState.activeConversationId = null;
   sessionState.pendingSystemPrompt = args?.systemPrompt ? String(args.systemPrompt) : null;
-  sessionState.pendingRole = args?.role ? String(args.role) : null;
 
   let confirmationMsg = "Antigravity discussion session has been reset. The next call to discuss_with_antigravity will start a brand new conversation.";
-  if (sessionState.pendingRole || sessionState.pendingSystemPrompt) {
-    confirmationMsg += ` Pre-configured role: ${sessionState.pendingRole || "custom"}, system prompt: ${sessionState.pendingSystemPrompt || "none"}.`;
+  if (sessionState.pendingSystemPrompt) {
+    confirmationMsg += ` Pre-configured system prompt: ${sessionState.pendingSystemPrompt}.`;
   }
 
   return {

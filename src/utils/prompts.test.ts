@@ -126,18 +126,18 @@ describe("prompts utility", () => {
 
   it("should walk up and find real repo prompts/ when ANTIGRAVITY_PROMPTS_DIR is unset", () => {
     delete process.env.ANTIGRAVITY_PROMPTS_DIR;
-    const result = loadPrompt("roles/programmer.md");
+    const result = loadPrompt("debate/optimist.md");
     expect(result).toBeDefined();
     expect(result.length).toBeGreaterThan(0);
   });
 
   it("should prioritize ANTIGRAVITY_PROMPTS_DIR override over walk-up", () => {
     const tempDir = createTempDir();
-    fs.mkdirSync(path.join(tempDir, "roles"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "roles/programmer.md"), "Override content\n", "utf-8");
+    fs.mkdirSync(path.join(tempDir, "debate"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "debate/optimist.md"), "Override content\n", "utf-8");
 
     process.env.ANTIGRAVITY_PROMPTS_DIR = tempDir;
-    const result = loadPrompt("roles/programmer.md");
+    const result = loadPrompt("debate/optimist.md");
     expect(result).toBe("Override content");
   });
 });

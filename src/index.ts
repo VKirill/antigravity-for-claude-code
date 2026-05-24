@@ -28,7 +28,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "discuss_with_antigravity",
-        description: "Engage in a multi-turn deliberative debate or discussion session with Antigravity (agy). The server automatically remembers the active conversation history unless reset. You can pass systemPrompt/role or worker/skills parameters to configure the persona/worker instructions when starting a new discussion thread or executing worker tasks.",
+        description: "Engage in a multi-turn deliberative debate or discussion session with Antigravity (agy). The server automatically remembers the active conversation history unless reset. You can pass systemPrompt or worker/skills parameters to configure the persona/worker instructions when starting a new discussion thread or executing worker tasks.",
         inputSchema: {
           type: "object",
           properties: {
@@ -43,11 +43,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             systemPrompt: {
               type: "string",
               description: "Optional custom system instructions to initialize the conversation with (only applied when starting a new session).",
-            },
-            role: {
-              type: "string",
-              description: "Optional preset role for Antigravity: 'designer', 'copywriter', 'programmer', 'architect' (only applied when starting a new session).",
-              enum: ["designer", "copywriter", "programmer", "architect"],
             },
             worker: {
               type: "string",
@@ -66,18 +61,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "reset_antigravity_session",
-        description: "Clears the active discussion session history in memory. The next discussion call will start a fresh, new conversation context. Optionally configures a systemPrompt or role for the new session in advance.",
+        description: "Clears the active discussion session history in memory. The next discussion call will start a fresh, new conversation context. Optionally configures a systemPrompt for the new session in advance.",
         inputSchema: {
           type: "object",
           properties: {
             systemPrompt: {
               type: "string",
               description: "Optional custom system instructions to initialize the new session with.",
-            },
-            role: {
-              type: "string",
-              description: "Optional preset role for the new session: 'designer', 'copywriter', 'programmer', 'architect'.",
-              enum: ["designer", "copywriter", "programmer", "architect"],
             },
           },
         },
