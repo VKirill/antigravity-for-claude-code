@@ -195,20 +195,29 @@ while task ready --json | jq 'length' > 0:
 
     for (id, jobId, status) in newly-finished:     # harvest immediately, don't wait for the slowest
       r = mcp__antigravity__discuss_with_antigravity_async_result(jobId)
-      parse the ```yaml ... ``` result block
-      echo "$transcript" | task save-artifact <id> --kind transcript
+      # r is ONLY the worker's `result:` envelope — the server strips the raw transcript so you
+      # never ingest it (it would drain the weekly limit, and you never need the file). The full
+      # transcript stays server-side; fetch it ON DEMAND with async_result(jobId, full:true) —
+      # used only in the recovery chain below, never on the happy path.
+      parse the ```yaml ... ``` result block (r already IS that block)
+      echo "$r" | task save-artifact <id> --kind result
       run each verification_commands; collect stdout/stderr
       # NB: `status` = the async JOB status (success|failed|killed from async_status), which is
       #     DISTINCT from result.status (the worker's self-reported verdict, e.g. done|paused).
-      if status == success AND result.status not in (paused, needs_decomposition) AND all verifications green:
+      #     A crashed/envelope-less job comes back as a synthesized result.status: failed.
+      if status == success AND result.status not in (paused, needs_decomposition, failed) AND all verifications green:
         git add <files_to_touch> && git commit -m "<task title>"   # YOU commit, serialized
         npx gitnexus analyze (incremental, soft-fail)              # Phase 4→5 handoff
         task update <id> --status done --payload '{"summary":"...","verification":"..."}'
         → pass to Phase 5 (per-task review)
       else:
-        recovery chain (1: re-dispatch + errors, 2: + diff/transcript,
-          3: Antigravity worker-doctor prompt, 4: re-dispatch with doctor guidance,
-          5+: mark blocked, continue) — NEVER halt the rest of the batch on one failure
+        recovery chain — NEVER halt the rest of the batch on one failure:
+          1: re-dispatch with the envelope's errors/findings
+          2: fetch the FULL transcript — full = async_result(jobId, full:true) — pull the
+             compiler/lint tracebacks out of it, re-dispatch with those
+          3: Antigravity worker-doctor prompt, fed the FULL transcript (full:true)
+          4: re-dispatch with doctor guidance
+          5+: mark blocked, continue
 
   # batch drained → recompute `task ready` → next batch
 ```

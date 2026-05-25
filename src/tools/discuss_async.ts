@@ -1,7 +1,8 @@
 import { sessionState } from "../state.ts";
 import { loadPrompt } from "../utils/prompts.ts";
-import { startTmuxJob, getJobStatus, getJobDir } from "../utils/jobs.ts";
+import { startTmuxJob, getJobStatus, getJobDir, scanFatalMarker } from "../utils/jobs.ts";
 import { buildFooter } from "../utils/observability.ts";
+import { formatWorkerResult } from "../utils/result-envelope.ts";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -152,8 +153,8 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) { // gu
   }
 
   let responseText = "";
+  const outputFile = join(getJobDir(jobId), "output.txt");
   try {
-    const outputFile = join(getJobDir(jobId), "output.txt");
     if (existsSync(outputFile)) {
       responseText = readFileSync(outputFile, "utf-8");
     }
@@ -161,13 +162,24 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) { // gu
     return { content: [{ type: "text", text: `Error reading output file: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
   }
 
+  // Layer 0 — return ONLY the deterministic `result:` envelope, never the raw transcript.
+  // The orchestrator (Opus) must not ingest the full agy output (it drains the weekly Claude
+  // limit and the orchestrator never needs the file). full:true (or AGY_RESULT_FULL=1) returns
+  // the complete transcript — for human debugging / orchestrator recovery escalation only.
+  const full = args?.full === true || process.env.AGY_RESULT_FULL === "1";
+  let crashMarker: string | null = null;
+  if (!full) {
+    try { crashMarker = scanFatalMarker(outputFile); } catch { crashMarker = null; }
+  }
+  const payload = formatWorkerResult({ output: responseText, full, crashMarker });
+
   const durationMs = meta.durationMs || (Date.now() - meta.startTime);
   const footer = buildFooter(meta.filesBefore || [], meta.filesAfter || [], durationMs);
   const activeId = sessionState.activeConversationId || "new";
 
   const returnText = footer
-    ? `${responseText}\n\n<!-- active_session_id: ${activeId} -->\n${footer}`
-    : `${responseText}\n\n<!-- active_session_id: ${activeId} -->`;
+    ? `${payload}\n\n<!-- active_session_id: ${activeId} -->\n${footer}`
+    : `${payload}\n\n<!-- active_session_id: ${activeId} -->`;
 
   return {
     content: [
@@ -176,6 +188,10 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) { // gu
         text: returnText,
       }
     ],
-    isError: meta.status === "failed" || meta.status === "killed",
+    // Not an MCP error even when the job failed/was killed: payload is always a structured
+    // result envelope (real or synthesized status: failed). The orchestrator gates retry/doctor
+    // on result.status — surfacing isError:true here makes some clients halt the whole run.
+    // Genuine infra faults (fs read failure) already returned isError:true above.
+    isError: false,
   };
 }

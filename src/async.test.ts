@@ -100,7 +100,7 @@ describe("async tool tests", () => {
     expect(resultObj.status).toBe("success");
   });
 
-  test("discuss_with_antigravity_async_result returns the full response", async () => {
+  test("discuss_with_antigravity_async_result returns a result envelope, not the raw transcript", async () => {
     transport.simulateReceive({
       jsonrpc: "2.0",
       method: "tools/call",
@@ -116,9 +116,37 @@ describe("async tool tests", () => {
     await new Promise(resolve => setTimeout(resolve, 20));
 
     expect(transport.sentMessages.length).toBe(1);
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — matches existing transport-message access pattern in this file
     expect(response.id).toBe(62);
     expect(response.result.content).toBeArray();
-    expect(response.result.content[0].text).toContain("Final output from agy");
+    const text = response.result.content[0].text;
+    // The mock transcript ("Final output from agy") has no `result:` envelope → the server
+    // synthesizes a failed envelope so the orchestrator still gets a structured result.
+    expect(text).toContain("result:");
+    expect(text).toContain("status: failed");
+    expect(text).toContain("Final output from agy"); // crash evidence kept inline
+  });
+
+  test("discuss_with_antigravity_async_result full:true returns the raw transcript", async () => {
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity_async_result",
+        arguments: {
+          jobId: "some-job-id",
+          full: true
+        }
+      },
+      id: 63
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const response: any = transport.sentMessages[0]; // guardian: allow — matches existing transport-message access pattern in this file
+    expect(response.id).toBe(63);
+    const text = response.result.content[0].text;
+    expect(text).toContain("Final output from agy");
+    expect(text).not.toContain("status: failed"); // full bypasses envelope synthesis
   });
 });

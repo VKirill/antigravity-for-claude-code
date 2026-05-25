@@ -117,13 +117,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "discuss_with_antigravity_async_result",
-        description: "Retrieves the final output response text of a completed background task. Call this only when status is no longer running.",
+        description: "Retrieves the worker's result envelope (the single `result:` YAML block) of a completed background task. The full raw transcript is NOT returned by default — it stays as a server-side artifact so the orchestrator never has to ingest it. Pass full:true only for human debugging or recovery escalation. Call this only when status is no longer running.",
         inputSchema: {
           type: "object",
           properties: {
             jobId: {
               type: "string",
               description: "The unique job ID of the completed task.",
+            },
+            full: {
+              type: "boolean",
+              description: "When true, return the COMPLETE raw transcript instead of just the result envelope. Default false. Use sparingly (debugging / recovery) — it is large and drains context.",
             },
           },
           required: ["jobId"],
