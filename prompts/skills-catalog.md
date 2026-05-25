@@ -39,26 +39,12 @@ Workers MAY add role-specific extra keys under `result:` (e.g. `self_review`, `d
 
 ---
 
-## Per-role DEFAULT skills (auto-loaded — do NOT re-pass)
+## Picking skills
 
-Each worker prompt hardcodes its DEFAULTS in its `## 0. Skills to load FIRST` section and loads
-them automatically. The orchestrator/planner must put **ONLY task-specific OPTIONAL picks** in
-`skill_hints` / `{{skills}}` — never repeat the defaults (that wastes context & breaks the cache).
-Choose optional picks from **"Available skills"** (below) by stack / need.
-
-| Worker (role) | DEFAULT skills (auto-loaded by the worker) |
-|---|---|
-| **worker-coder** (programmer) | `karpathy-guidelines`, `coder-craft` |
-| **worker-frontend** (designer) | `karpathy-guidelines`, `coder-craft`, `frontend-craft` |
-| **worker-reviewer** (architect) | `karpathy-guidelines`, `review-craft`, `ru-text-quick` |
-| **worker-planner** (architect) | `karpathy-guidelines`, `orchestrator-workflow`, `architecture-craft` |
-| **worker-refactor-architect** (architect) | `karpathy-guidelines`, `refactoring`, `refactor-hotspots-craft` |
-| **worker-test-verifier** (programmer) | `testing-craft`, `tdd` |
-| **worker-security-verifier** (architect) | `cybersecurity-audit` |
-| **worker-payments-verifier** (architect) | `cybersecurity-audit`, `review-craft` |
-| **worker-ui-verifier** (designer) | `ui-craft`, `web-qa-2026` |
-| **worker-db-reader** (architect) | `postgresql`, `data-systems-craft` |
-| **worker-doctor** (programmer) | `systematic-debugging`, `debugging-craft` |
+Each worker **auto-loads its own DEFAULT skills** (baked into its prompt's `## 0. Skills to load
+FIRST` section) — you don't manage or repeat those. Your only job: read the task, then pick the
+**TASK-SPECIFIC skills** for it from **"Available skills"** (below) by stack / need, and put them in
+`skill_hints` / `{{skills}}`. Pick `[]` if the defaults already cover the task.
 
 ---
 
