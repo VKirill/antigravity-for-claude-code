@@ -210,12 +210,15 @@ export function startTmuxJob(
 
   // Redirect command. cwd is set by tmux's -c flag below, so no `cd` here
   // (keeps a project path that contains a quote from breaking the shell string).
-  // Run agy under `setsid -w` (when available) so it gets its OWN session/process-group: an
-  // exit-time process-group signal from agy can no longer kill THIS shell before the trailing
-  // `echo $?` writes exit_code.txt (the intermittent "tmux session died before echo" bug). `-w`
-  // makes setsid WAIT and propagate agy's real exit code. Falls back to plain agy where setsid is
-  // absent (e.g. macOS) — the result.yaml sidecar fallback in getJobStatus covers that case.
-  const bashCommand = `${envPrefix}S=$(command -v setsid >/dev/null 2>&1 && echo 'setsid -w' || echo ''); $S ${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
+  // Run agy DIRECTLY in the pane (NO `setsid`). tmux already isolates the job in its own pane and
+  // ties the process to it. An earlier `setsid -w` detached agy into a session with no controlling
+  // terminal: when the pane died agy missed the SIGHUP, kept running ORPHANED for 30s+, and the
+  // tmux session vanished while agy was still alive — getJobStatus then saw `has-session` fail and
+  // declared a FALSE death (before the worker had even written result.yaml), triggering needless
+  // retries. Binding agy to the pane makes "session gone" mean "agy actually exited", at which
+  // point the worker's result.yaml sidecar (written as its LAST action) is already on disk — so the
+  // sidecar fallback in getJobStatus covers the residual race where the trailing `echo $?` is lost.
+  const bashCommand = `${envPrefix}${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
 
   // Start tmux session in background. execFileSync (no outer shell) so jobId and
   // projectCwd cannot inject shell metacharacters into the tmux command line.
@@ -270,6 +273,25 @@ export function getJobStatus(jobId: string): JobMeta {
   }
 
   if (meta.status !== "running") {
+    // Belt-and-suspenders: a job we previously declared dead via the premature-death path can
+    // still be recovered if the worker's result.yaml sidecar landed just after that verdict
+    // (the trailing `echo $?` lost a race to a signal). Re-check ONLY that exact case — never a
+    // real nonzero exit, a parse error, or a crash-monitor kill (137).
+    if (meta.status === "failed" && meta.error === "Tmux session exited prematurely without writing exit code.") {
+      try {
+        const sidecarFile = join(getJobDir(jobId), "result.yaml");
+        if (existsSync(sidecarFile) && parseEnvelopeStrict(readFileSync(sidecarFile, "utf-8")).ok) {
+          meta.status = "success";
+          meta.exitCode = 0;
+          meta.error = undefined;
+          saveJobMeta(meta);
+          recordJobEndSafely(jobId, true, meta.durationMs ?? 0);
+          logLifecycleEvent("agy.async.success", { jobId, exitCode: 0, durationMs: meta.durationMs, via: "sidecar-late" });
+        }
+      } catch {
+        // unreadable/invalid sidecar → keep the failed verdict
+      }
+    }
     return meta;
   }
 

@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach } from "bun:test";
-import { resetMockState, setMockFiles, setMockReadContent } from "./test-setup.ts";
-import { scanFatalMarker } from "./utils/jobs.ts";
+import { resetMockState, setMockFiles, setMockReadContent, mockFsFiles } from "./test-setup.ts";
+import { scanFatalMarker, getJobStatus, getJobDir, saveJobMeta } from "./utils/jobs.ts";
 
 // Regression coverage for the parallel-safety fix in startCrashMonitor.
 // Previously the monitor scanned the SHARED newest ~/.gemini/.../cli-*.log and fired the
@@ -51,5 +51,51 @@ describe("scanFatalMarker — per-job crash detection (parallel-safe)", () => {
   test("returns null when the output file does not exist", () => {
     // mock existsSync is false for a path outside /jobs/ and not ending in output.txt
     expect(scanFatalMarker("/tmp/nonexistent-elsewhere.log")).toBeNull();
+  });
+});
+
+// Regression coverage for the false-death recovery. A job we previously declared dead via the
+// premature-death path (tmux session gone before the trailing `echo $?` wrote exit_code.txt) must
+// be upgraded to success on a later poll IF the worker's result.yaml sidecar landed afterwards —
+// but ONLY for that exact case, never for a real failure. This is the belt to the root fix
+// (running agy directly in the pane instead of detaching it with `setsid`).
+describe("getJobStatus — late sidecar recovery of a premature-death failure", () => {
+  const PREMATURE = "Tmux session exited prematurely without writing exit code.";
+  const VALID_ENVELOPE = "result:\n  summary: done\n  status: success\n  errors: []\n";
+
+  beforeEach(() => {
+    resetMockState();
+  });
+
+  function seedFailed(jobId: string, error: string) {
+    saveJobMeta({ jobId, conversationId: null, status: "failed", error, startTime: Date.now() - 1000, durationMs: 1000 });
+  }
+
+  test("upgrades failed→success when a valid sidecar exists for a premature death", () => {
+    const jobId = "task-recover-job-ok";
+    seedFailed(jobId, PREMATURE);
+    mockFsFiles.set(`${getJobDir(jobId)}/result.yaml`, VALID_ENVELOPE);
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("success");
+    expect(meta.exitCode).toBe(0);
+    expect(meta.error).toBeUndefined();
+  });
+
+  test("stays failed when the sidecar is missing/invalid", () => {
+    const jobId = "task-recover-job-nosidecar";
+    seedFailed(jobId, PREMATURE);
+    // no result.yaml seeded → mock readFileSync yields empty content → parseEnvelopeStrict fails
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
+  });
+
+  test("does NOT upgrade a non-premature failure even with a valid sidecar (scope guard)", () => {
+    const jobId = "task-recover-job-realfail";
+    seedFailed(jobId, "Error reading exit code: bad code");
+    mockFsFiles.set(`${getJobDir(jobId)}/result.yaml`, VALID_ENVELOPE);
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
   });
 });
