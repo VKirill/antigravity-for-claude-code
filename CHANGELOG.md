@@ -3,6 +3,32 @@
 All notable changes to this MCP server are documented here.
 Все значимые изменения этого MCP-сервера документируются здесь.
 
+## v1.6.0 — Pure-PM orchestrator + discovery-first (2026-05-25)
+
+### English
+
+The agy orchestrator becomes a true **project manager**: it never reads source code — all code / symbol / graph discovery is delegated to the planner. Designed and reviewed end-to-end with Antigravity.
+
+- **Tools trimmed:** dropped `Edit`, `Grep`, `Glob`, all `serena`, and gitnexus discovery tools (`query`/`context`/`impact`/`route_map`/`tool_map`/`rename`/`list_repos`). Kept `Read` (docs / config / logs ONLY — never source), `Bash` (ops only), `Write` (`docs/plans/` only), antigravity dispatch, memory + perplexity, and `gitnexus detect_changes` + `api_impact` (release-gate checks).
+- **Discovery-first ALWAYS:** every task — including trivial ones — routes through `worker-planner`. New `depth: express` (real file map + 1-2 flat contracts, no heavy SPEC) vs `depth: full` (SPEC + contracts). The PM never scopes from its own reading — a "one-line" request can hide a large blast radius.
+- **Planner reads project docs first** (`architecture.md`, `docs/index.md`, `README`, `CLAUDE.md`, `glossary.md`), then the code graph; the orchestrator feeds these via `context_refs`.
+- **Phase 7 review gate strengthened** — since the PM never reads code, the final gate is its only look at the diff; it now explicitly hunts shortcuts / gamed tests / design drift.
+- **Enforcement:** PreToolUse hook (`scripts/guard-orchestrator-agy-no-source-read.sh`) blocks source reading via `Read`/`Bash` for the `dev-orchestrator-agy` agent (fail-open; docs/config/logs allowed).
+
+`bun test`: **109 passing**.
+
+### Русский
+
+agy-оркестратор становится настоящим **проект-менеджером**: он не читает исходный код — всё discovery (код/символы/граф) делегируется планировщику. Спроектировано и проверено end-to-end вместе с Antigravity.
+
+- **Урезаны инструменты:** убраны `Edit`, `Grep`, `Glob`, вся `serena` и discovery-часть gitnexus. Оставлены `Read` (только доки/конфиги/логи — НЕ исходники), `Bash` (только ops), `Write` (только `docs/plans/`), диспетч antigravity, memory + perplexity, `gitnexus detect_changes` + `api_impact` (релиз-гейты).
+- **Discovery-first ВСЕГДА:** любая задача (включая тривиальную) идёт через `worker-planner`. Новый `depth: express` (карта файлов + 1-2 контракта, без тяжёлого SPEC) vs `depth: full` (SPEC + контракты). PM не скоупит со своего чтения — «однострочная» правка может скрывать большой blast radius.
+- **Планировщик сперва читает доки проекта** (`architecture.md`, `docs/index.md`, `README`, `CLAUDE.md`, `glossary.md`), потом граф; оркестратор передаёт их через `context_refs`.
+- **Усилен ревью-гейт Phase 7** — раз PM не видит код, это его единственный взгляд на дифф; теперь явно ищет костыли / подкрученные тесты / дрейф дизайна.
+- **Принуждение:** PreToolUse-хук (`scripts/guard-orchestrator-agy-no-source-read.sh`) блокирует чтение исходников через `Read`/`Bash` для агента `dev-orchestrator-agy` (fail-open; доки/конфиги/логи разрешены).
+
+`bun test`: **109 проходят**.
+
 ## v1.5.0 — Unified worker result envelope (2026-05-25)
 
 ### English

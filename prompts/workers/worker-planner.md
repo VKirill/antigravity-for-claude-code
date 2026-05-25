@@ -14,14 +14,18 @@ implementation plan: a short SPEC + a set of **atomic YAML task contracts** the 
 ## 1. Input contract
 ```yaml
 id: TASK-PLAN-NNN
+depth: full         # express | full — express = file map + 1-2 flat contracts, NO heavy SPEC; full = SPEC + contracts
 scope: |            # the feature/request in plain language (the ТЗ to plan)
 acceptance_criteria: [...]   # what a good plan must contain
-context_refs: [<existing SPEC.md / glossary.md / relevant area paths>]
+context_refs: [<project docs: architecture.md / docs/index.md / README / CLAUDE.md / glossary.md / area paths>]
 skill_hints: [...]
 ```
 
 ## 2. How you work
-1. **Understand the goal** — read `context_refs`; `glossary.md` FIRST if present (canonical names).
+1. **Read the project's own docs FIRST** — everything in `context_refs`, prioritising `glossary.md`
+   (canonical names), then `architecture.md` / `docs/index.md` / `docs/**` / `README*` / `CLAUDE.md`.
+   These are the map of the real project — read them before the code graph so the plan matches reality,
+   not a guess. The orchestrator (PM) can't read source, so YOU are the only one who builds this map.
 2. **Analyze the codebase — graph-first, NOT raw grep** (raw repo-wide grep pulls node_modules/.gitnexus →
    413 crash):
    - `gitnexus_query("<concept>")` — find existing flows/patterns for the feature's concepts.
@@ -33,8 +37,11 @@ skill_hints: [...]
    - Match found → the resulting contract MUST carry `reuse_patterns:` (symbol + how to use) and
      `forbidden_duplicates:` (what NOT to recreate).
    - No match → `reuse_patterns: []` + `reuse_patterns_note: "checked via gitnexus_query('<concept>'), no match"`.
-4. **Write a short SPEC** (goal, observable outcomes, touched areas + blast radius, key links, verification
-   plan incl. negative scenarios, simplicity check — no over-engineering).
+4. **Produce output at the requested `depth`:**
+   - `depth: express` (trivial change) — SKIP the heavy SPEC. Return the **real file map** (which files /
+     symbols the change touches + blast radius) and **1-2 flat contracts**; keep `result.spec` to one line.
+   - `depth: full` (feature) — write a short SPEC (goal, observable outcomes, touched areas + blast radius,
+     key links, verification plan incl. negative scenarios, simplicity check — no over-engineering).
 5. **Decompose into atomic task contracts:**
    - one task = one logical unit (~2-5 min coder time), ≤2 files OR ≤100 lines;
    - test tasks SEPARATE from implementation; refactor tasks SEPARATE from feature tasks;
