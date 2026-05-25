@@ -6,7 +6,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { handleDiscussWithAntigravity, handleResetAntigravitySession } from "./tools/discuss.ts";
-import { handleDiscussWithAntigravityAsyncStart, handleDiscussWithAntigravityAsyncStatus, handleDiscussWithAntigravityAsyncResult } from "./tools/discuss_async.ts";
+import { handleDiscussWithAntigravityAsyncStart, handleDiscussWithAntigravityAsyncStatus, handleDiscussWithAntigravityAsyncResult, handleDiscussWithAntigravityAsyncWait } from "./tools/discuss_async.ts";
 import { handleRunDebateDeliberation, handleRunInteractiveDebate } from "./tools/debate.ts";
 import { handleReviewCodeChanges, handleGetProgrammingAdvice } from "./tools/programming.ts";
 import { handleGetDebateReceipt } from "./tools/receipt.ts";
@@ -103,13 +103,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "discuss_with_antigravity_async_status",
-        description: "Checks the status of an active or completed background task running in tmux. Returns the state (running, success, failed, killed) and the tail of the log output.",
+        description: "Non-blocking peek at ONE job's state (running, success, failed, killed) + a 1-line progress summary. Does NOT return the log tail by default (it accumulates context and invalidates the prompt cache on every poll). To AWAIT jobs prefer discuss_with_antigravity_async_wait (blocking, batch). Pass includeLogTail:true only for debugging.",
         inputSchema: {
           type: "object",
           properties: {
             jobId: {
               type: "string",
               description: "The unique job ID returned by discuss_with_antigravity_async_start.",
+            },
+            includeLogTail: {
+              type: "boolean",
+              description: "When true, also include the last 25 lines of the raw transcript. Default false — debugging only; it bloats context.",
             },
           },
           required: ["jobId"],
@@ -131,6 +135,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["jobId"],
+        },
+      },
+      {
+        name: "discuss_with_antigravity_async_wait",
+        description: "BLOCKING, batch-aware wait — the token-efficient way to await background jobs. Holds the response until the wait condition is met or timeoutMs elapses, so you don't poll in a loop. Returns ONLY compact statuses (no logs): {jobs, finished[], running[], timedOut}. Harvest each finished job with discuss_with_antigravity_async_result; if `running` is non-empty, call this again with those ids.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            jobIds: {
+              type: "array",
+              items: { type: "string" },
+              description: "Job IDs to await — pass the whole in-flight batch.",
+            },
+            waitMode: {
+              type: "string",
+              enum: ["any", "all"],
+              description: "'any' (default) returns as soon as ONE job settles — best for fan-in (harvest the first finisher, re-call on the rest). 'all' waits until every job settles.",
+            },
+            timeoutMs: {
+              type: "number",
+              description: "Max block before returning current state (default 180000, min 1000, max 300000). On timeout just call again to keep waiting.",
+            },
+          },
+          required: ["jobIds"],
         },
       },
       {
@@ -301,6 +329,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   if (name === "discuss_with_antigravity_async_result") {
     return handleDiscussWithAntigravityAsyncResult(args);
+  }
+
+  if (name === "discuss_with_antigravity_async_wait") {
+    return handleDiscussWithAntigravityAsyncWait(args);
   }
 
   if (name === "reset_antigravity_session") {

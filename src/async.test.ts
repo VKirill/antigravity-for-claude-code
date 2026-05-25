@@ -149,4 +149,43 @@ describe("async tool tests", () => {
     expect(text).toContain("Final output from agy");
     expect(text).not.toContain("status: failed"); // full bypasses envelope synthesis
   });
+
+  test("discuss_with_antigravity_async_wait returns settled jobs (no polling, no logs)", async () => {
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "discuss_with_antigravity_async_wait",
+        arguments: { jobIds: ["some-job-id"], waitMode: "any" }
+      },
+      id: 64
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 30));
+
+    const response: any = transport.sentMessages[0]; // guardian: allow — matches existing transport-message access pattern in this file
+    expect(response.id).toBe(64);
+    const data = JSON.parse(response.result.content[0].text);
+    expect(data.finished).toContain("some-job-id");
+    expect(data.running).toEqual([]);
+    expect(data.jobs["some-job-id"].status).toBe("success");
+    // compact statuses only — the raw transcript must never leak into a wait/status payload
+    expect(response.result.content[0].text).not.toContain("Final output from agy");
+  });
+
+  test("discuss_with_antigravity_async_wait requires a non-empty jobIds array", async () => {
+    transport.simulateReceive({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { name: "discuss_with_antigravity_async_wait", arguments: {} },
+      id: 65
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const response: any = transport.sentMessages[0]; // guardian: allow — matches existing transport-message access pattern in this file
+    expect(response.id).toBe(65);
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain("jobIds");
+  });
 });

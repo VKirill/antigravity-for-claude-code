@@ -98,17 +98,26 @@ export async function handleDiscussWithAntigravityAsyncStatus(args: any) { // gu
     return { content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
   }
 
-  let logTail = "";
+  // Default: a TINY payload. Repeated polling must NOT drag the raw transcript into the
+  // orchestrator context — it accumulates permanently AND invalidates the prompt cache on
+  // every poll (you re-pay the whole conversation each time). Keep a 1-line progressSummary
+  // for the terminal board; the full 25-line tail is opt-in via includeLogTail. The blocking
+  // `_wait` tool is the preferred way to await jobs — see handleDiscussWithAntigravityAsyncWait.
+  const includeLogTail = args?.includeLogTail === true;
+  let progressSummary: string | null = null;
+  let logTail: string | null = null;
   if (meta.status === "running") {
     try {
       const outputFile = join(getJobDir(jobId), "output.txt");
       if (existsSync(outputFile)) {
         const content = readFileSync(outputFile, "utf-8");
-        const lines = content.split(/\n/);
-        logTail = lines.slice(-25).join("\n");
+        const lines = content.split(/\n/).filter((l) => l.trim().length > 0);
+        const last = lines[lines.length - 1] || "";
+        progressSummary = last ? last.slice(0, 80) : null;
+        if (includeLogTail) logTail = lines.slice(-25).join("\n");
       }
     } catch (e) {
-      // ignore soft-fail
+      // ignore soft-fail — status must still return
     }
   }
 
@@ -120,7 +129,8 @@ export async function handleDiscussWithAntigravityAsyncStatus(args: any) { // gu
           jobId: meta.jobId,
           status: meta.status,
           durationSec: Math.round((Date.now() - meta.startTime) / 1000),
-          logTail: logTail || null,
+          progressSummary,
+          ...(includeLogTail ? { logTail } : {}),
           error: meta.error || null,
         }),
       }
@@ -192,6 +202,73 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) { // gu
     // result envelope (real or synthesized status: failed). The orchestrator gates retry/doctor
     // on result.status — surfacing isError:true here makes some clients halt the whole run.
     // Genuine infra faults (fs read failure) already returned isError:true above.
+    isError: false,
+  };
+}
+
+// Blocking, batch-aware wait. Collapses the orchestrator's O(N) poll loop into O(1) calls:
+// the server holds the JSON-RPC response (checking job state every 1.5s) until the wait
+// condition is met or a bounded timeout elapses, so the model stays idle instead of waking
+// to poll dozens of times (each poll accumulates context AND invalidates the prompt cache).
+// Batch + waitMode:"any" avoids head-of-line blocking when a fan-out batch is in flight.
+export async function handleDiscussWithAntigravityAsyncWait(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
+  const jobIds: string[] = Array.isArray(args?.jobIds)
+    ? args.jobIds.map((x: unknown) => String(x)).filter((s: string) => s.length > 0)
+    : [];
+  if (jobIds.length === 0) {
+    return { content: [{ type: "text", text: "Error: jobIds (non-empty array) is required" }], isError: true };
+  }
+  for (const id of jobIds) {
+    if (!/^[A-Za-z0-9._-]+$/.test(id)) {
+      return { content: [{ type: "text", text: `Error: invalid jobId: ${id}` }], isError: true };
+    }
+  }
+  const waitMode: "any" | "all" = args?.waitMode === "all" ? "all" : "any";
+  // Bound the block so one call can never hang the client; the orchestrator just re-calls
+  // _wait on the still-running jobs. A few calls replace dozens of polls.
+  const timeoutMs = Math.min(Math.max(Number(args?.timeoutMs) || 180000, 1000), 300000);
+
+  type JobState = { status: string; durationSec: number; error?: string };
+  const collect = (): Record<string, JobState> => {
+    const jobs: Record<string, JobState> = {};
+    for (const id of jobIds) {
+      try {
+        const meta = getJobStatus(id);
+        jobs[id] = {
+          status: meta.status,
+          durationSec: Math.round((Date.now() - meta.startTime) / 1000),
+          ...(meta.error ? { error: meta.error } : {}),
+        };
+      } catch (e) {
+        jobs[id] = { status: "unknown", durationSec: 0, error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    return jobs;
+  };
+  const settled = (j: JobState): boolean => j.status !== "running";
+  const reached = (jobs: Record<string, JobState>): boolean => {
+    const list = Object.values(jobs);
+    return waitMode === "any" ? list.some(settled) : list.every(settled);
+  };
+
+  const start = Date.now();
+  let jobs = collect();
+  while (!reached(jobs) && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 1500));
+    jobs = collect();
+  }
+
+  const finished = Object.keys(jobs).filter((id) => settled(jobs[id]));
+  const running = Object.keys(jobs).filter((id) => !settled(jobs[id]));
+  return {
+    content: [
+      {
+        type: "text",
+        // Compact: statuses only, NO logs/transcript. Harvest each `finished` job via _result;
+        // re-call _wait on `running` if any remain. timedOut=true → call again to keep waiting.
+        text: JSON.stringify({ jobs, finished, running, timedOut: !reached(jobs) }),
+      },
+    ],
     isError: false,
   };
 }

@@ -183,15 +183,20 @@ while task ready --json | jq 'length' > 0:
                 cwd: "<absolute project root>")
     remember {id ↔ jobId}; task update <id> --status in_progress
 
-  # ── FAN-IN — poll the WHOLE set; harvest each job the moment it finishes ──
+  # ── FAN-IN — BLOCKING WAIT, never a poll loop. async_wait holds the JSON-RPC response
+  #   until a job settles (or 180s), so you stay IDLE instead of polling N times. Each poll
+  #   accumulates context permanently AND invalidates the prompt cache → you re-bill the whole
+  #   conversation every poll. Do NOT loop async_status — that is the old token-burning pattern.
   pending = {all jobIds in batch}
   while pending not empty:
-    for jobId in pending:
-      s = mcp__antigravity__discuss_with_antigravity_async_status(jobId)
-      if s.status == "running": keep in pending
-      else: move jobId → finished(status)         # success | failed | killed
-    print the progress board (one line, see below)
-    if pending not empty: wait ~10s
+    w = mcp__antigravity__discuss_with_antigravity_async_wait(
+          jobIds: [pending…], waitMode: "any", timeoutMs: 180000)
+    move each id in w.finished → finished(status = w.jobs[id].status)   # success | failed | killed
+    pending = w.running
+    print the progress board (one line, see below)        # statuses only — no log tail
+    # w.timedOut just means nothing settled in 180s → the loop simply calls async_wait again.
+    # Need to peek at one slow job? async_status(jobId) (tiny: status + 1-line progressSummary);
+    # add includeLogTail:true ONLY for ad-hoc debugging — never in a loop.
 
     for (id, jobId, status) in newly-finished:     # harvest immediately, don't wait for the slowest
       r = mcp__antigravity__discuss_with_antigravity_async_result(jobId)

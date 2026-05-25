@@ -36,7 +36,7 @@ describe("index.ts entrypoint tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(50);
     expect(response.result.tools).toBeArray();
-    expect(response.result.tools.length).toBe(11);
+    expect(response.result.tools.length).toBe(12);
 
     const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity");
     expect(discussTool).toBeDefined();
@@ -46,6 +46,9 @@ describe("index.ts entrypoint tests", () => {
 
     const usageTool = response.result.tools.find((t: any) => t.name === "get_usage_stats");
     expect(usageTool).toBeDefined();
+
+    const waitTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity_async_wait"); // guardian: allow — matches existing tool-find pattern in this test
+    expect(waitTool).toBeDefined();
   });
 
   test("Unknown tool call triggers error response", async () => {
