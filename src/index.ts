@@ -13,7 +13,7 @@ import { handleGetDebateReceipt } from "./tools/receipt.ts";
 import { logLifecycleEvent } from "./utils/observability.ts";
 import { handleGetUsageStats } from "./tools/usage_stats.ts";
 import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
-import { getActiveRunningJobIds } from "./utils/jobs.ts";
+import { getActiveRunningJobIds, harvestCompletedOrphans } from "./utils/jobs.ts";
 
 export const server = new Server(
   {
@@ -261,9 +261,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params as any;
+  const { name, arguments: args } = request.params as any; // guardian: allow — dynamic MCP request params
 
-  const metadata: any = {
+  const metadata: any = { // guardian: allow — dynamic per-tool metadata payload
     tool: name,
   };
   if (args) {
@@ -329,15 +329,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 export async function startServer() {
-  try { sweepOrphanJobSessions(); } catch (e: unknown) {}
+  // Record usage for jobs that finished while we were down, then sweep their
+  // now-orphan tmux sessions. Best-effort: never block server boot.
+  try {
+    harvestCompletedOrphans();
+    sweepOrphanJobSessions();
+  } catch {
+    // startup hygiene is best-effort
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
 // Run server only if executed directly
 if (import.meta.main) {
-  const shutdown = () => { try { killSessions(getActiveRunningJobIds()); } catch (e: unknown) {} process.exit(0); };
+  const shutdown = () => {
+    try {
+      killSessions(getActiveRunningJobIds());
+    } catch {
+      // best-effort cleanup on the way out
+    }
+    process.exit(0);
+  };
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+  // A stdio MCP client that disconnects without a signal just closes our stdin.
+  // The crash-monitor interval keeps the event loop alive, so without this the
+  // process would linger as a zombie. Treat stdin close as a shutdown trigger.
+  process.stdin.on("close", shutdown);
   await startServer();
 }

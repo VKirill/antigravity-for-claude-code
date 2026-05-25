@@ -2,8 +2,10 @@ import { sessionState } from "../state.ts";
 import { runAgy } from "../utils/agy.ts";
 import { captureGitFiles, buildFooter } from "../utils/observability.ts";
 import { loadPrompt } from "../utils/prompts.ts";
+import { recordJobStart, recordJobEnd } from "../utils/usage-store.ts";
+import { estimateTokens } from "../utils/token-estimate.ts";
 
-export async function handleDiscussWithAntigravity(args: any) {
+export async function handleDiscussWithAntigravity(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
   const prompt = String(args?.prompt || "");
   
   // Auto-detect task ID from the prompt content if conversationId is not explicitly specified
@@ -66,9 +68,19 @@ export async function handleDiscussWithAntigravity(args: any) {
     // soft-fail
   }
   const t0 = Date.now();
+  try {
+    recordJobStart({ promptChars: promptToSend.length });
+  } catch {
+    // telemetry best-effort
+  }
 
   try {
     const responseText = await runAgy(cmdArgs, promptToSend);
+    try {
+      recordJobEnd({ success: true, outputChars: responseText.length, durationMs: Date.now() - t0, estimatedTokens: estimateTokens(promptToSend + responseText) });
+    } catch {
+      // telemetry best-effort
+    }
     
     if (conversationIdToUse) {
       sessionState.activeConversationId = conversationIdToUse;
@@ -101,12 +113,17 @@ export async function handleDiscussWithAntigravity(args: any) {
         }
       ],
     };
-  } catch (err: any) {
+  } catch (err) {
+    try {
+      recordJobEnd({ success: false, outputChars: 0, durationMs: Date.now() - t0, estimatedTokens: estimateTokens(promptToSend) });
+    } catch {
+      // telemetry best-effort
+    }
     return {
       content: [
         {
           type: "text",
-          text: `Error debating with Antigravity: ${err.message}`,
+          text: `Error debating with Antigravity: ${err instanceof Error ? err.message : String(err)}`,
         },
       ],
       isError: true,
@@ -114,7 +131,7 @@ export async function handleDiscussWithAntigravity(args: any) {
   }
 }
 
-export async function handleResetAntigravitySession(args: any) {
+export async function handleResetAntigravitySession(args: any) { // guardian: allow — dynamic MCP tool args
   sessionState.activeConversationId = null;
   sessionState.pendingSystemPrompt = args?.systemPrompt ? String(args.systemPrompt) : null;
 

@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, openSync, readSync, closeSync } from "fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, readdirSync, openSync, readSync, closeSync } from "fs";
 import { join } from "path";
 import { execFileSync, spawn } from "child_process";
 import { logLifecycleEvent, captureGitFiles, buildFooter } from "./observability.ts";
@@ -32,6 +32,32 @@ export function getActiveRunningJobIds(): string[] {
     }
   }
   return ids;
+}
+
+// At server start, record usage for jobs that finished while the server was down
+// (meta still says "running" but exit_code.txt exists), so their tokens/time are
+// not lost. Dedup via recordedEnds prevents double counting.
+export function harvestCompletedOrphans(): number {
+  let harvested = 0;
+  try {
+    const jobsDir = getJobsDir();
+    if (!existsSync(jobsDir)) return 0;
+    for (const name of readdirSync(jobsDir)) {
+      try {
+        const meta = loadJobMeta(name);
+        if (meta && meta.status === "running" &&
+            existsSync(join(getJobDir(name), "exit_code.txt"))) {
+          getJobStatus(name); // flips to terminal status + records usage (deduped)
+          harvested++;
+        }
+      } catch {
+        // skip an unreadable / invalid job dir
+      }
+    }
+  } catch {
+    // jobs dir unreadable — nothing to harvest
+  }
+  return harvested;
 }
 
 function recordJobEndSafely(jobId: string, success: boolean, durationMs: number): void {
