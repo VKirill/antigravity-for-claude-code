@@ -3,6 +3,7 @@ import {
   extractResultEnvelope,
   synthesizeFailureEnvelope,
   formatWorkerResult,
+  wrapSidecarEnvelope,
 } from "./utils/result-envelope.ts";
 
 describe("extractResultEnvelope", () => {
@@ -153,5 +154,39 @@ describe("formatWorkerResult", () => {
     expect(out).toContain("status: failed");
     expect(out).toContain("Worker emitted no result: envelope");
     expect(out).toContain("agent executor error");
+  });
+});
+
+describe("wrapSidecarEnvelope (strict result.yaml path)", () => {
+  test("accepts a clean bare envelope and wraps it", () => {
+    const env = wrapSidecarEnvelope("result:\n  status: done\n  summary: ok")!;
+    expect(env).toContain("```yaml");
+    expect(env).toContain("status: done");
+  });
+
+  test("tolerates the worker wrapping the file in a ```yaml fence", () => {
+    const env = wrapSidecarEnvelope("```yaml\nresult:\n  status: planned\n```")!;
+    expect(env).toContain("status: planned");
+    // no double fence — exactly the wrapper open + close
+    expect((env.match(/```/g) || []).length).toBe(2);
+  });
+
+  test("dedents an indented sidecar to valid top-level YAML", () => {
+    const env = wrapSidecarEnvelope("  result:\n    status: done")!;
+    expect(env).toContain("\nresult:");
+    expect(env).toContain("status: done");
+  });
+
+  test("returns null for empty / whitespace / missing", () => {
+    expect(wrapSidecarEnvelope("")).toBeNull();
+    expect(wrapSidecarEnvelope("   \n  ")).toBeNull();
+    expect(wrapSidecarEnvelope(null)).toBeNull();
+    expect(wrapSidecarEnvelope(undefined)).toBeNull();
+  });
+
+  test("rejects a non-envelope or truncated sidecar (caller falls back)", () => {
+    expect(wrapSidecarEnvelope("just some text")).toBeNull();
+    expect(wrapSidecarEnvelope("foo:\n  bar: 1")).toBeNull();
+    expect(wrapSidecarEnvelope("result:")).toBeNull(); // truncated, no payload
   });
 });

@@ -75,6 +75,25 @@ export function extractResultEnvelope(output: string): string | null {
 }
 
 /**
+ * The STRICT path: the worker wrote its envelope to a dedicated `result.yaml` SIDECAR — a clean
+ * file, not the noisy transcript. We just normalise + validate it (no mining, no guessing which
+ * block is real). Tolerates an accidental ```yaml fence the worker may have added. Returns the
+ * wrapped envelope, or null if the sidecar is absent/empty/not a valid envelope — in which case
+ * the caller falls back to transcript extraction (older worker, or it crashed before writing).
+ */
+export function wrapSidecarEnvelope(content: string | null | undefined): string | null {
+  if (!content) return null;
+  let body = content.trim();
+  if (!body) return null;
+  // tolerate the worker wrapping the file in a single fence
+  const fenced = body.match(/^`{3,}[ \t]*(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n`{3,}\s*$/);
+  if (fenced) body = fenced[1];
+  body = dedent(body.trim());
+  if (!looksLikeEnvelope(body)) return null;
+  return "```yaml\n" + body.trimEnd() + "\n```";
+}
+
+/**
  * Build a deterministic FAILURE envelope when the worker emitted no parseable `result:`
  * (it crashed before finishing). The orchestrator still gets a clean structured result it
  * can gate on (status: failed) — with the crash evidence inline, NO reference to any file.

@@ -2,7 +2,7 @@ import { sessionState } from "../state.ts";
 import { loadPrompt } from "../utils/prompts.ts";
 import { startTmuxJob, getJobStatus, getJobDir, scanFatalMarker } from "../utils/jobs.ts";
 import { buildFooter } from "../utils/observability.ts";
-import { formatWorkerResult } from "../utils/result-envelope.ts";
+import { formatWorkerResult, wrapSidecarEnvelope } from "../utils/result-envelope.ts";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -67,6 +67,15 @@ export async function handleDiscussWithAntigravityAsyncStart(args: any) { // gua
     }
   }
   const jobId = `${taskPrefix}job-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // SIDECAR contract (worker dispatches only): tell the worker to write its result envelope to a
+  // dedicated result.yaml beside the transcript. _result reads that file directly (strict — no
+  // regex mining of the noisy stream). The ABSOLUTE path is injected so the worker's cwd doesn't
+  // matter, and the orchestrator reads from the same server-side job dir.
+  if (worker) {
+    const resultPath = join(getJobDir(jobId), "result.yaml");
+    promptToSend += `\n\n---\n[RESULT SIDECAR — REQUIRED] As your VERY LAST action, write your single \`result:\` YAML envelope to this EXACT file (use your file-write tool), in addition to printing it in your reply:\n${resultPath}\nWrite ONLY the YAML whose top-level key is \`result:\` — nothing else. The orchestrator reads this file to get your result; if it is missing, your run is treated as failed.`;
+  }
 
   // Start job in tmux
   const meta = startTmuxJob(jobId, promptToSend, conversationIdToUse, args?.cwd ? String(args.cwd) : undefined);
@@ -172,16 +181,33 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) { // gu
     return { content: [{ type: "text", text: `Error reading output file: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
   }
 
-  // Layer 0 — return ONLY the deterministic `result:` envelope, never the raw transcript.
-  // The orchestrator (Opus) must not ingest the full agy output (it drains the weekly Claude
-  // limit and the orchestrator never needs the file). full:true (or AGY_RESULT_FULL=1) returns
-  // the complete transcript — for human debugging / orchestrator recovery escalation only.
+  // Return ONLY the deterministic `result:` envelope, never the raw transcript. The orchestrator
+  // (Opus) must not ingest the full agy output (it drains the weekly Claude limit and the
+  // orchestrator never needs the file). full:true (or AGY_RESULT_FULL=1) returns the complete
+  // transcript — for human debugging / orchestrator recovery escalation only.
   const full = args?.full === true || process.env.AGY_RESULT_FULL === "1";
-  let crashMarker: string | null = null;
-  if (!full) {
-    try { crashMarker = scanFatalMarker(outputFile); } catch { crashMarker = null; }
+  let payload: string;
+  if (full) {
+    payload = responseText;
+  } else {
+    // STRICT path first: read the worker's result.yaml sidecar (a clean dedicated file — no
+    // mining the noisy transcript). Fall back to extracting from the transcript only if the
+    // sidecar is missing/invalid (older worker, or it crashed before writing).
+    let sidecar: string | null = null;
+    try {
+      const sidecarPath = join(getJobDir(jobId), "result.yaml");
+      if (existsSync(sidecarPath)) sidecar = wrapSidecarEnvelope(readFileSync(sidecarPath, "utf-8"));
+    } catch (e) {
+      sidecar = null; // unreadable sidecar → fall through to transcript extraction
+    }
+    if (sidecar) {
+      payload = sidecar;
+    } else {
+      let crashMarker: string | null = null;
+      try { crashMarker = scanFatalMarker(outputFile); } catch { crashMarker = null; }
+      payload = formatWorkerResult({ output: responseText, crashMarker });
+    }
   }
-  const payload = formatWorkerResult({ output: responseText, full, crashMarker });
 
   const durationMs = meta.durationMs || (Date.now() - meta.startTime);
   const footer = buildFooter(meta.filesBefore || [], meta.filesAfter || [], durationMs);
