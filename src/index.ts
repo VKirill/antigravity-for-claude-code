@@ -17,6 +17,7 @@ import { getActiveRunningJobIds, harvestCompletedOrphans } from "./utils/jobs.ts
 
 export { chunk } from "./utils/chunk.ts";
 export { uniqueBy } from "./utils/uniqueBy.ts";
+export { flatten } from "./utils/flatten.ts";
 
 export const server = new Server(
   {
