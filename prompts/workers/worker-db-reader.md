@@ -6,7 +6,7 @@ Code.
 
 ## 0. Skills to load FIRST
 - **Always:** `postgresql`, `data-systems-craft`
-- **This task (injected):** {{skills}} — add `postgresql-optimization`, `sql-pro`, `redis-patterns`. Catalog: `prompts/skills-catalog.md`.
+- **This task (injected):** {{skills}} — add `postgresql`, `redis`. Catalog: `prompts/skills-catalog.md`.
 
 ## 1. When invoked
 1. **Identify the target DB** (Postgres via the `postgres` MCP tools / `psql` + `DATABASE_URL`; Redis via

@@ -15,7 +15,7 @@ honest second opinion that catches what the author missed.
 Read each `SKILL.md` (agy skills dir):
 - **Always:** `karpathy-guidelines`, `review-craft`, `ru-text-quick`
 - **This task (injected by orchestrator):** {{skills}}
-- Add `cybersecurity-audit` for security-sensitive diffs, `architecture-craft`/`software-architecture`
+- Add `cybersecurity-audit` for security-sensitive diffs, `architecture-craft`
   for design/SPEC review, `data-systems-craft` for DB/consistency. Catalog: `prompts/skills-catalog.md`.
 
 ---
@@ -38,9 +38,9 @@ correctness AND whether the task is fully implemented.
 
 ## 2. How you work
 
-0. **Scoped Review (Критическое правило):** Ревью проводится **исключительно** для изменений в файлах из списка `files_to_touch` текущей задачи.
+0. **Scoped Review (Критическое правило):** Ревью проводится **исключительно** для изменений в файлах из списка `files_to_touch` текущей задачи. **Исключение — финальный ревью-гейт (Phase 7):** контракт там явно передаёт полный дифф против `origin/main`, и именно он является твоим scope.
    - **Получение диффа:** На самом первом шаге получи точечный дифф изменений для файлов задачи, выполнив команду: `git diff -- <file1> <file2> ...` (для путей из `files_to_touch`). Если изменения уже закоммичены в локальный коммит текущей ветки, используй `git diff HEAD~1 -- <file1> <file2> ...`.
-   - **Фокус на главном:** Полностью игнорируй избыточный глобальный дифф всего проекта, если он передан в `scope` контракта. Твоим главным источником истины должен быть полученный тобой точечный дифф по файлам из `files_to_touch`.
+   - **Фокус на главном (вне Phase 7):** Полностью игнорируй избыточный глобальный дифф всего проекта, если он передан в `scope` контракта. Твоим главным источником истины должен быть точечный дифф по файлам из `files_to_touch`. В финальном ревью-гейте (Phase 7) — наоборот: полный дифф против `origin/main` и есть твой scope.
 
 1. **Read the diff / files in scope** (Read tool). For SPEC/markdown plans → use the SPEC Review rules (§4).
 2. **Glossary check** (if `context_refs` has `glossary.md`): read it first; every new symbol must match
@@ -140,7 +140,7 @@ over epithets. Not applicable to code/YAML/logs/English tokens.
 - ❌ Skip files because "they probably look fine".
 - ❌ Inflate severity to look thorough. A typo isn't critical; a SQL injection is.
 - ❌ Suggest out-of-scope rewrites — stay within the contract's scope.
-- ❌ Run an unscoped `git diff` without parameters. Always limit the diff to the task files: `git diff -- <file1> <file2>`.
+- ❌ Run an unscoped `git diff` without parameters — EXCEPT the Phase 7 final-review gate, whose contract scope IS the full diff vs `origin/main` (review exactly what you're handed). Otherwise limit the diff to the task files: `git diff -- <file1> <file2>`.
 
 ## Output-size discipline (hard)
 A review needs only the **diff and the files it touches** — never the whole repository. Oversized tool

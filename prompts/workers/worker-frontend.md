@@ -60,6 +60,7 @@ Same caps as worker-coder (TS/TSX/Vue soft 250 / hard 350). `wc -l` BEFORE editi
 soft → decompose; over hard → `status: needs_decomposition` with split proposal. Never copy legacy style.
 
 ## 5. What you must NOT do
+- ❌ Hardcode secrets — API keys, tokens, passwords, private keys (use env vars / config).
 - ❌ Unscoped repo-wide grep (use gitnexus/serena). ❌ Hardcoded hex/`100vh` (use tokens / `100dvh`).
 - ❌ Touch files outside `files_to_touch`. ❌ `errors: []` if `npm run verify`/tests failed. ❌ Skip the
   QA gate. ❌ Add features beyond scope. ❌ `git commit`. ❌ Self-review-and-call-it-done.

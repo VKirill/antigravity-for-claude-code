@@ -51,7 +51,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             worker: {
               type: "string",
-              description: "Optional worker instruction file under prompts/workers/ (e.g. 'worker-coder'). Its {{skills}} placeholder is filled from `skills`. When set, the full instruction is prepended and the role preset is skipped.",
+              description: "Optional worker instruction file under prompts/workers/ (e.g. 'worker-coder'). Its {{skills}} placeholder is filled from `skills`. When set, the full instruction is prepended.",
             },
             skills: {
               type: "array",

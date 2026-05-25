@@ -3,6 +3,52 @@
 All notable changes to this MCP server are documented here.
 Все значимые изменения этого MCP-сервера документируются здесь.
 
+## v1.4.0 — Security & robustness hardening + worker-prompt audit (2026-05-25)
+
+### English
+
+Post-verification hardening of the usage feature plus a full worker-prompt audit (done together with Antigravity).
+
+**Security**
+- All `tmux` calls now use `execFileSync(file, argv)` instead of a shell command string — `jobId` / `projectCwd` / session names can no longer inject shell metacharacters (closes a pre-existing command-injection vector). Dropped the redundant `cd` (cwd set via `tmux -c`).
+- `async_status` / `async_result` reject any `jobId` that isn't `^[A-Za-z0-9._-]+$` before it reaches the filesystem (path-traversal guard).
+- `worker-coder` / `worker-frontend` now explicitly forbid hardcoding secrets.
+
+**Robustness**
+- stdin close is now a shutdown trigger — a stdio client that disconnects without a signal no longer leaves a zombie process (the crash-monitor interval used to keep it alive).
+- On startup the server records usage for jobs that finished while it was down, then sweeps their orphan tmux sessions.
+- The sync `discuss_with_antigravity` tool now records usage too (`get_usage_stats` was async-only).
+- Crash monitor skips finished-but-unpolled jobs (no false-kill when legitimate output contains a marker string).
+
+**Worker-prompt audit (with Antigravity)**
+- Replaced phantom skill references (`software-architecture`, `postgresql-optimization`, …) with real bundled skills.
+- `worker-reviewer`: explicit Phase-7 exception so the final-review gate can review the full diff vs `origin/main`.
+- `index.ts`: dropped a stale "role preset" mention (role presets were removed earlier).
+
+`bun test`: **109 passing**.
+
+### Русский
+
+Укрепление фичи учёта после диагностики + полный аудит воркер-промтов (вместе с Antigravity).
+
+**Безопасность**
+- Все вызовы `tmux` теперь через `execFileSync(file, argv)`, а не строкой шелла — `jobId` / `projectCwd` / имена сессий больше не могут инжектить метасимволы (закрыт пред-существующий вектор command-injection). Убран лишний `cd` (cwd задаётся через `tmux -c`).
+- `async_status` / `async_result` отвергают `jobId`, не подходящий под `^[A-Za-z0-9._-]+$`, до обращения к ФС (защита от traversal).
+- `worker-coder` / `worker-frontend` явно запрещают хардкод секретов.
+
+**Надёжность**
+- Закрытие stdin теперь триггерит shutdown — stdio-клиент, отвалившийся без сигнала, больше не оставляет zombie-процесс (его держал интервал кран-монитора).
+- При старте сервер учитывает usage джоб, завершившихся пока он был выключен, затем подчищает их осиротевшие tmux-сессии.
+- Sync-инструмент `discuss_with_antigravity` теперь тоже пишет usage (`get_usage_stats` считал только async).
+- Кран-монитор пропускает завершённые-но-неопрошенные джобы (нет ложного kill при строке-маркере в легитимном выводе).
+
+**Аудит воркер-промтов (с Antigravity)**
+- Фантомные ссылки на скиллы (`software-architecture`, `postgresql-optimization`, …) заменены реальными из набора.
+- `worker-reviewer`: явное исключение для Phase 7, чтобы финальный гейт мог ревьюить полный дифф против `origin/main`.
+- `index.ts`: убрано устаревшее упоминание "role preset".
+
+`bun test`: **109 проходят**.
+
 ## v1.3.0 — agy usage accounting, tmux hygiene, bundled skill pack (2026-05-25)
 
 ### English

@@ -129,6 +129,7 @@ attack the specific failure. If `guidance` present (worker-doctor diagnosis) —
 
 ## 6. What you must NOT do
 
+- ❌ Hardcode secrets — API keys, tokens, passwords, private keys. Use env vars / config templates; never commit them.
 - ❌ Run an unscoped repo-wide grep/GrepSearch (pulls caches/node_modules → 413). Use gitnexus/serena.
 - ❌ Touch files outside `files_to_touch` (except new files in the same module).
 - ❌ Mark `errors: []` if any verification_command failed.

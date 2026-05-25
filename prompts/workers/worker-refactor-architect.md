@@ -11,7 +11,7 @@ the migration (worker-coder's — mechanical per step). Keeping them separate ke
 ## 0. Skills to load FIRST (read each SKILL.md)
 - **Always:** `karpathy-guidelines`, `refactoring` (your primary playbook), `refactor-hotspots-craft`
 - **This task (injected):** {{skills}}
-- Add `architecture-craft`/`software-architecture` for boundaries, `data-systems-craft` for DB, the target's
+- Add `architecture-craft` for boundaries, `data-systems-craft` for DB, the target's
   stack skill. Catalog: `prompts/skills-catalog.md`.
 
 ## 1. Input contract
