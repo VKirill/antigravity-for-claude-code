@@ -48,246 +48,160 @@ FIRST` section) — you don't manage or repeat those. Your only job: read the ta
 
 ---
 
-## Full stack (catalog, grouped)
-
-**Core craft / discipline:** `karpathy-guidelines` `coder-craft` `tdd` `testing-craft`
-`testing-patterns` `review-craft` `debugging-craft` `systematic-debugging` `gitnexus-debugging`
-`refactoring` `refactor-hotspots-craft` `code-refactoring-tech-debt` `architecture-craft`
-`software-architecture` `data-systems-craft` `microservices-patterns` `logging-standards-2026`
-`backend-security-coder` `cybersecurity-audit` `security-audit`
-
-**Languages:** `typescript` `typescript-pro` `python` `python-pro` `javascript-pro` `sql-pro` `go`
-`c-pro` `cpp-pro` `csharp-pro` `php-pro` `cuda-python`
-
-**Frontend:** `react` `react-patterns` `react-best-practices` `react-hook-form` `react-native-architecture`
-`vue` `vue-developer` `nextjs` `nextjs-app-router-patterns` `nextjs-best-practices` `nuxt` `astro`
-`tailwind` `shadcn` `ui-styling` `ui-designer` `ui-ux-pro-max` `ui-craft` `frontend-craft`
-`frontend-developer` `css-architecture-2026` `design-system` `design-system-2026` `ux-craft-2026`
-`web-animation-router` `webgl-creative-2026` `svg-canvas-craft` `web-qa-2026`
-
-**Backend / data:** `nodejs` `nodejs-backend-patterns` `nodejs-expert` `fastify` `fastify-pro` `hono`
-`nestjs-expert` `fastapi` `fastapi-pro` `django` `api-patterns` `graphql` `graphql-architect`
-`better-auth` `bullmq` `bullmq-specialist` `prisma` `prisma-expert` `drizzle-orm-expert` `sqlalchemy`
-`postgresql` `postgresql-optimization` `redis` `redis-patterns` `nosql-expert` `database-architect`
-
-**Testing:** `pytest` `vitest` `playwright`
-
-> 222 skills total are available in the agy skills dir; this lists the ones relevant to code workers.
-> For the exhaustive list run `ls ~/.agents/skills/`. Keep `skill_hints` tight (3-6 skills) — loading
-> everything wastes the worker's context window.
-
----
 
 <!-- SKILLS:START -->
 ## Available skills — pick OPTIONAL ones by description
 
-> Auto-generated from skills/*/SKILL.md by `scripts/gen-skill-catalog.ts` — 94 skills. Role DEFAULTS load automatically (baked into each worker prompt); put ONLY task-specific picks in `skill_hints`.
+> Auto-generated from the worker skill dir by `scripts/gen-skill-catalog.ts` — 127 skills. Role DEFAULTS load automatically (baked into each worker prompt); put ONLY task-specific picks in `skill_hints`.
 
-**CSS-native**
-- `web-animation-router` — Route AND implement web animation for 2026 — pick the right tool (CSS-native, Motion/motion.dev, GSAP, Auto…
-
-**MAX Bridge**
-- `max-bridge` — [RU: интеграция MAX мессенджера (VK Tech) — Mini Apps Bridge, валидация initData, HMAC] MAX Bridge SDK для …
-
-**MCP Spec**
-- `mcp-builder` — Design, build, and validate MCP (Model Context Protocol) servers for Claude Code, Codex CLI, OpenCode and o…
-
-**Polars**
-- `polars` — Polars 1.40 — Rust-backed columnar DataFrame for Python
-
-**Pydantic**
-- `pydantic` — Pydantic v2 runtime data validation for Python — BaseModel, Field, validators, JSON Schema, settings
-
-**Remotion**
-- `remotion` — Remotion — programmatic video framework where React components render to MP4 / WebM / GIF / stills frame-by…
-
-**agents**
-- `agent-evaluation` — Tests and benchmarks LLM agents covering behavioral testing, capability assessment, reliability metrics, an…
-
-**astro**
-- `astro` — Build modern websites with Astro 6.x — Islands Architecture, zero-JS defaults, Server Islands, Actions, Con…
-
-**better-auth**
-- `better-auth` — Better Auth — framework-agnostic TypeScript authentication
-
-**bullmq**
-- `bullmq` — BullMQ 5 — Redis-backed Node.js queue
-
-**claude-code**
-- `agent-builder` — Designs and authors Claude Code sub-agents (.claude/agents/*.md files) that integrate with an existing skil…
-- `claude-code` — Anthropic's official Claude Code CLI — terminal coding agent with skills, hooks, subagents, MCP, plan mode,…
-
-**cloud**
-- `yandex-cloud` — [RU: Яндекс.Облако — yc CLI, Compute Cloud, Managed PostgreSQL/MySQL/Redis/ClickHouse/MongoDB/Kafka, Object…
-
-**cloudpayments**
-- `cloudpayments` — [RU: интеграция CloudPayments — карты, СБП, рекуррент, 54-ФЗ] CloudPayments Russian payment gateway — REST …
-
-**codex**
-- `codex` — OpenAI Codex CLI — OpenAI's official Rust-based agentic terminal coding tool (NOT the deprecated 2021 Codex…
-
-**css**
-- `css-architecture-2026` — CSS architecture for vanilla HTML/CSS pre-framework — ITCSS-style tokens, BEM, OKLCH, @layer cascade layers…
-
-**cuda-python**
-- `cuda-python` — GPU compute in Python with NVIDIA's cuda-python bindings, CuPy (drop-in NumPy on GPU), Numba @cuda.jit, and…
-
-**debugging**
-- `systematic-debugging` — Methodology for finding root cause of bugs, test failures, and unexpected behaviour — symptom → reproductio…
-
-**django**
-- `django` — Django — batteries-included Python web framework
-
-**fastapi**
-- `fastapi` — FastAPI — modern async Python web framework on Starlette + Pydantic v2 with auto-generated OpenAPI 3.1
-
-**frontend**
-- `frontend-craft` — Дисциплина вёрстки для worker-coder: БЭМ, design tokens, accessibility (WCAG AA), responsive (mobile-first)…
-- `nuxt` — Nuxt 4 Vue meta-framework — file routing, SSR/SSG, server routes, auto-imports
-- `react` — Production React 19 — composition patterns, hooks, state management, performance, React Compiler, Actions, …
-- `shadcn` — shadcn/ui — copy-paste React components built on Radix UI primitives + Tailwind
-- `vite` — Vite 7 frontend build tool — fast HMR via native ESM, Rollup production builds, plugin ecosystem, modernize…
-- `vitest` — Vitest 4 unit testing — Vite-native, ESM-first, fast HMR
-- `vue` — Vue 3.5 — Composition API with script setup, reactivity, SFC, TypeScript
-
-**frontend-libraries**
-- `zod` — Zod 4 TS-first runtime validation — schemas, parsing, transforms, refinements, async, discriminated unions
-
-**general**
+**Core craft & discipline**
 - `architecture-craft` — System architecture discipline from Newman + Khononov + Richards/Ford
+- `brainstorming` — Requirements gathering before any creative work
 - `coder-craft` — Universal coder discipline for editing files inside YAML task contracts
+- `cybersecurity-audit` — Stack-agnostic vulnerability hunting — OWASP Top 10 2025, OWASP API Top 10, OWASP LLM Top 10, supply-chain …
 - `data-systems-craft` — Data-systems design discipline from Kleppmann (DDIA)
 - `debugging-craft` — Universal debugging discipline for failure investigation. Distilled from Agans + Zeller + Spinellis
-- `refactor-hotspots-craft` — Behavioral code analysis from Tornhill (Software Design X-Rays)
-- `review-craft` — Code review discipline from Cohen's SmartBear empirical research
-- `testing-craft` — Universal test-writing discipline from Meszaros + Osherove + Beck/GOOS
-- `ui-craft` — UI/UX verification discipline for frontend changes. From Krug + Wathan/Schoger + Nielsen 10 + WCAG 2.2
-
-**google-cloud-auth**
-- `google-cloud-auth` — [RU: oauth google, авторизация гугл, service account, sa key, refresh token, invalid_grant, adc, google clo…
-
-**hono**
-- `hono` — Hono 4 — small ultrafast multi-runtime web framework on Web Standards
-
-**httpx**
-- `httpx` — httpx — modern Python HTTP client with sync + async APIs, HTTP/2, strict timeouts, and a broadly requests-c…
-
-**langchain**
-- `langchain` — LangChain Python v1 — LLM app framework
-
-**lint-format**
-- `biome` — Biome 2 — Rust-based lint + format for JS/TS/JSON/CSS
-- `eslint` — ESLint 10 — JS/TS linter with flat config, typescript-eslint, framework plugins, Prettier/Biome coexistence
-
-**logging**
-- `logging-standards-2026` — Production logging standards — structured JSON logs, correlation IDs, OpenTelemetry, log levels (TRACE/DEBU…
-
-**meta**
-- `skill-evaluation` — Audit, rewrite, and design Claude Code skills per Anthropic's Agent Skills best practices
-
-**mobile**
-- `expo` — Expo SDK 55 + React Native 0.85 — build, ship, and update iOS/Android apps
-
-**next-intl**
-- `i18n` — Web app internationalization — next-intl (Next.js/React) and vue-i18n (Nuxt/Vue)
-
-**nextjs**
-- `nextjs` — Next.js 16 App Router — Server Components, Server Actions, 'use cache', PPR, Turbopack, async params/cookie…
-
-**nodejs-backend**
-- `fastify` — Fastify 5 — Node-native production HTTP framework
-- `nodejs` — Node.js 24 production — type stripping, native APIs, framework selection, graceful shutdown, security, obse…
-
-**numpy**
-- `numpy` — NumPy — N-dimensional arrays, broadcasting, ufuncs, linalg, random Generator API for Python scientific comp…
-
-**opencode**
-- `opencode` — OpenCode CLI — open-source multi-provider terminal coding agent (sst/opencode, Anomaly fork) with BYOK for …
-
-**other**
-- `brainstorming` — Requirements gathering before any creative work
-- `ckm:design-system` — Token architecture, component specifications, and slide generation
-- `design-system-2026` — Design system foundations 2026 — OKLCH color ramps (perceptually-even, APCA/WCAG verified), fluid typograph…
-- `gitnexus-cli`
-- `gitnexus-debugging`
-- `gitnexus-exploring`
-- `gitnexus-guide` — Documents GitNexus itself — available tools, knowledge graph queries, MCP resources, graph schema, and work…
-- `gitnexus-impact-analysis`
-- `gitnexus-pr-review`
-- `gitnexus-refactoring`
+- `frontend-craft` — Дисциплина вёрстки для worker-coder: БЭМ, design tokens, accessibility (WCAG AA), responsive (mobile-first)…
 - `karpathy-guidelines` — Behavioral guidelines to reduce common LLM coding mistakes
-- `media-asset-pipeline` — Web media asset pipeline & budgets 2026 — glTF/GLB optimization (Draco, meshopt, KTX2 via gltf-transform), …
+- `logging-standards-2026` — Production logging standards — structured JSON logs, correlation IDs, OpenTelemetry, log levels (TRACE/DEBU…
 - `orchestrator-workflow` — DB-persistent task dispatch + YAML contracts for dev-orchestrator
 - `project-architecting` — Senior Architect methodology for greenfield projects — collects business requirements through 1-3 chat phas…
+- `refactor-hotspots-craft` — Behavioral code analysis from Tornhill (Software Design X-Rays)
 - `refactoring` — Architecture analysis + refactoring planning
+- `review-craft` — Code review discipline from Cohen's SmartBear empirical research
+- `ru-text` — Use when writing, editing, or reviewing Russian-language text, or when user mentions ru-text
 - `ru-text-quick` — Выжимка ru-text для коротких русских отчётов / findings / статусов / комментариев
-- `svg-canvas-craft` — SVG & Canvas2D craft for 2026 — SVG animation (CSS/SMIL/JS), stroke draw-on, MorphSVG vs flubber, SVG filte…
-- `tailwind`
+- `systematic-debugging` — Methodology for finding root cause of bugs, test failures, and unexpected behaviour — symptom → reproductio…
 - `tdd` — Test-driven development discipline for workers — write failing test first, minimal implementation, green, r…
+- `testing-craft` — Universal test-writing discipline from Meszaros + Osherove + Beck/GOOS
+
+**Testing**
+- `playwright` — Playwright 1.60 E2E testing — Chromium/Firefox/WebKit, auto-wait, web-first assertions, fixtures, trace viewer
+- `pytest` — pytest 9 — Python's #1 testing framework
+- `vitest` — Vitest 4 unit testing — Vite-native, ESM-first, fast HMR
+
+**Frontend & UI**
+- `astro` — Build modern websites with Astro 6.x — Islands Architecture, zero-JS defaults, Server Islands, Actions, Con…
+- `ckm:design-system` — Token architecture, component specifications, and slide generation
+- `css-architecture-2026` — CSS architecture for vanilla HTML/CSS pre-framework — ITCSS-style tokens, BEM, OKLCH, @layer cascade layers…
+- `design-system-2026` — Design system foundations 2026 — OKLCH color ramps (perceptually-even, APCA/WCAG verified), fluid typograph…
+- `expo` — Expo SDK 55 + React Native 0.85 — build, ship, and update iOS/Android apps
+- `i18n` — Web app internationalization — next-intl (Next.js/React) and vue-i18n (Nuxt/Vue)
+- `linux-sysadmin` — Linux sysadmin for Ubuntu 24.04 production — Angie (Nginx fork), PM2, PostgreSQL 18, Redis 8, Docker 29, PH…
+- `nextjs` — Next.js 16 App Router — Server Components, Server Actions, 'use cache', PPR, Turbopack, async params/cookie…
+- `nuxt` — Nuxt 4 Vue meta-framework — file routing, SSR/SSG, server routes, auto-imports
+- `react` — Production React 19 — composition patterns, hooks, state management, performance, React Compiler, Actions, …
+- `react-hook-form` — React Hook Form v7 — performant forms via uncontrolled inputs, Zod validation
+- `shadcn` — shadcn/ui — copy-paste React components built on Radix UI primitives + Tailwind
+- `svg-canvas-craft` — SVG & Canvas2D craft for 2026 — SVG animation (CSS/SMIL/JS), stroke draw-on, MorphSVG vs flubber, SVG filte…
+- `tanstack-query` — TanStack Query 5 server-state management — queries, mutations, infinite, optimistic, cache
+- `ui-craft` — UI/UX verification discipline for frontend changes. From Krug + Wathan/Schoger + Nielsen 10 + WCAG 2.2
+- `ui-ux-pro-max` — UI/UX design intelligence for web and mobile
 - `ux-craft-2026` — UX & content craft for high-end sites 2026 — information architecture & page blueprints (pages.yaml, hero a…
+- `vue` — Vue 3.5 — Composition API with script setup, reactivity, SFC, TypeScript
+- `web-animation-router` — Route AND implement web animation for 2026 — pick the right tool (CSS-native, Motion/motion.dev, GSAP, Auto…
 - `web-qa-2026` — Deterministic web QA/verification suite 2026 — the exact runnable toolchain to verify a built site WITHOUT …
 - `webgl-creative-2026` — WebGL/WebGPU creative front-end for 2026 — Three.js + React Three Fiber + drei + TSL + WebGPU production se…
 
-**pandas**
-- `pandas` — pandas 3.0 — DataFrame analysis library for Python
-
-**postgresql**
+**Backend & data**
+- `better-auth` — Better Auth — framework-agnostic TypeScript authentication
+- `bullmq` — BullMQ 5 — Redis-backed Node.js queue
+- `django` — Django — batteries-included Python web framework
+- `fastapi` — FastAPI — modern async Python web framework on Starlette + Pydantic v2 with auto-generated OpenAPI 3.1
+- `fastify` — Fastify 5 — Node-native production HTTP framework
+- `hono` — Hono 4 — small ultrafast multi-runtime web framework on Web Standards
+- `httpx` — httpx — modern Python HTTP client with sync + async APIs, HTTP/2, strict timeouts, and a broadly requests-c…
+- `nodejs` — Node.js 24 production — type stripping, native APIs, framework selection, graceful shutdown, security, obse…
 - `postgresql` — PostgreSQL 18 — production-grade open-source RDBMS
-
-**prisma**
 - `prisma` — Prisma 7 — TypeScript-first ORM
-
-**proxy6**
-- `proxy6` — [RU: интеграция proxy6.net — покупка/продление прокси, пул, ipauth, scraping] proxy6.net REST API — RU prox…
-
-**pytest**
-- `pytest` — pytest 9 — Python's #1 testing framework
-
-**python**
-- `python` — Python 3.14 foundation — syntax, type hints, packaging with uv, ruff/mypy, asyncio
-
-**pytorch**
-- `pytorch` — PyTorch deep learning framework — tensor compute, autograd, nn.Module training loops, DataLoader, mixed pre…
-
-**react**
-- `react-hook-form` — React Hook Form v7 — performant forms via uncontrolled inputs, Zod validation
-
-**react-frontend**
-- `tanstack-query` — TanStack Query 5 server-state management — queries, mutations, infinite, optimistic, cache
-
-**redis**
+- `pydantic` — Pydantic v2 runtime data validation for Python — BaseModel, Field, validators, JSON Schema, settings
 - `redis` — Redis 8 — in-memory data store
-
-**scikit-learn**
-- `scikit-learn` — scikit-learn 1.8 — classical machine learning in Python
-
-**security**
-- `cybersecurity-audit` — Stack-agnostic vulnerability hunting — OWASP Top 10 2025, OWASP API Top 10, OWASP LLM Top 10, supply-chain …
-
-**sqlalchemy**
 - `sqlalchemy` — SQLAlchemy 2.0 — modern Python ORM + Core toolkit with first-class async support, type-annotated declarativ…
+- `zod` — Zod 4 TS-first runtime validation — schemas, parsing, transforms, refinements, async, discriminated unions
 
-**sysadmin**
-- `linux-sysadmin` — Linux sysadmin for Ubuntu 24.04 production — Angie (Nginx fork), PM2, PostgreSQL 18, Redis 8, Docker 29, PH…
-
-**telegram**
-- `telegram-bot` — Build, architect, deploy Telegram bots on grammY 1.x + Node 24 + TypeScript 5.9
-
-**testing**
-- `playwright` — Playwright 1.60 E2E testing — Chromium/Firefox/WebKit, auto-wait, web-first assertions, fixtures, trace viewer
-
-**transformers**
+**Data science & ML**
+- `cuda-python` — GPU compute in Python with NVIDIA's cuda-python bindings, CuPy (drop-in NumPy on GPU), Numba @cuda.jit, and…
+- `numpy` — NumPy — N-dimensional arrays, broadcasting, ufuncs, linalg, random Generator API for Python scientific comp…
+- `pandas` — pandas 3.0 — DataFrame analysis library for Python
+- `polars` — Polars 1.40 — Rust-backed columnar DataFrame for Python
+- `pytorch` — PyTorch deep learning framework — tensor compute, autograd, nn.Module training loops, DataLoader, mixed pre…
+- `scikit-learn` — scikit-learn 1.8 — classical machine learning in Python
 - `transformers` — HuggingFace Transformers — pretrained model hub, pipelines, AutoModel/AutoTokenizer, .generate() for LLMs/V…
 
-**typescript**
+**AI / agents / MCP**
+- `agent-builder` — Designs and authors Claude Code sub-agents (.claude/agents/*.md files) that integrate with an existing skil…
+- `agent-evaluation` — Tests and benchmarks LLM agents covering behavioral testing, capability assessment, reliability metrics, an…
+- `claude-code` — Anthropic's official Claude Code CLI — terminal coding agent with skills, hooks, subagents, MCP, plan mode,…
+- `codex` — OpenAI Codex CLI — OpenAI's official Rust-based agentic terminal coding tool (NOT the deprecated 2021 Codex…
+- `langchain` — LangChain Python v1 — LLM app framework
+- `mcp-builder` — Design, build, and validate MCP (Model Context Protocol) servers for Claude Code, Codex CLI, OpenCode and o…
+- `opencode` — OpenCode CLI — open-source multi-provider terminal coding agent (sst/opencode, Anomaly fork) with BYOK for …
+- `skill-evaluation` — Audit, rewrite, and design Claude Code skills per Anthropic's Agent Skills best practices
+
+**Infra / cloud / sysadmin**
+- `google-cloud-auth` — [RU: oauth google, авторизация гугл, service account, sa key, refresh token, invalid_grant, adc, google clo…
+- `proxy6` — [RU: интеграция proxy6.net — покупка/продление прокси, пул, ipauth, scraping] proxy6.net REST API — RU prox…
+- `yandex-cloud` — [RU: Яндекс.Облако — yc CLI, Compute Cloud, Managed PostgreSQL/MySQL/Redis/ClickHouse/MongoDB/Kafka, Object…
+
+**Integrations**
+- `cloudpayments` — [RU: интеграция CloudPayments — карты, СБП, рекуррент, 54-ФЗ] CloudPayments Russian payment gateway — REST …
+- `max-bridge` — [RU: интеграция MAX мессенджера (VK Tech) — Mini Apps Bridge, валидация initData, HMAC] MAX Bridge SDK для …
+- `telegram-ads-spec` — Спецификации рекламы в Telegram 2026: официальные TG Ads + посевы (закупка постов в каналах), форматы, цено…
+- `telegram-bot` — Build, architect, deploy Telegram bots on grammY 1.x + Node 24 + TypeScript 5.9
+- `vk-ads-spec` — Спецификации VK Ads (новая платформа) и старого VK Реклама 2026: типы кампаний, форматы постов/баннеров/сто…
+- `vk-bridge` — [RU: интеграция VK Mini Apps через VK Bridge — auth, VK Pay, sign launch params] VK Bridge SDK для VK Mini …
+- `yookassa` — [RU: интеграция ЮKassa] YooKassa by ЮMoney — API v3, Checkout.js widget, payment lifecycle (pending→waiting…
+
+**Marketing, SEO & content**
+- `ad-creatives-frameworks` — Фреймворки рекламных креативов: заголовки (4U/AIDA), описания+CTA, УТП и позиционирование, связка визуала и…
+- `audience-segmentation` — Фреймворки сегментации аудитории для SMM и копирайтинга
+- `ckm:banner-design` — Design banners for social media, ads, website heroes, creative assets, and print
+- `ckm:brand` — Brand voice, visual identity, messaging frameworks, asset management, brand consistency
+- `ckm:design` — Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini A…
+- `ckm:slides` — Create strategic HTML presentations with Chart.js, design tokens, responsive layouts, copywriting formulas,…
+- `ckm:ui-styling` — Create beautiful, accessible user interfaces with shadcn/ui components (built on Radix UI + Tailwind), Tail…
+- `competitor-analysis-frameworks` — Фреймворки конкурентного анализа для российского рынка 2026: SWOT, Porter's Five Forces, competitor matrix,…
+- `copywriting-frameworks` — Фреймворки коммерческих текстов (AIDA, PAS, 4U, JTBD, Storytelling) для российского рынка 2026
+- `design-studio-process` — Autonomous design-studio process & orchestration 2026 — the end-to-end agency pipeline (discovery->portrait…
+- `discovery-interview-pro` — Discovery interview methodology + Sparse-Input Amplifier for going from shallow client answers to deep audi…
+- `ga4-data-api` — [RU: ga4, гугл аналитика, аналитика 4] GA4 Data API v1beta — service account or OAuth
+- `google-ads-spec` — Спецификации Google Ads для российского рынка 2026 — 8 форматов (RSA / Performance Max / Display / Demand G…
+- `google-search-console` — [RU: Google Search Console API, гугл серч консоль, вебмастер гугл, gsc] GSC (Webmasters) API v1 — OAuth 2.0…
+- `gtm` — [RU: gtm, тег менеджер, google tag manager, контейнер, теги, триггеры, переменные, публикация версии, откат…
+- `legal-ru-marketing` — Юридический комплаенс маркетинговых материалов в РФ на 2026
+- `marketing-canon-2026` — Канон современного маркетинга — методологии 7 классических авторов (Sharp, Ries/Trout, Dunford, Rumelt, Cia…
+- `mutagen` — [RU: интеграция mutagen.ru — частотность Яндекс, конкуренция, SERP-отчёты] Mutagen.ru REST API — RU SEO too…
+- `senior-marketer-mindset` — Мышление senior-маркетолога: фреймворки (Funnel/AARRR/JTBD/LTV-CAC), pushback культура (когда отказать клие…
+- `seo-copywriting` — SEO-копирайтинг для статей и лендингов 2026: интеграция ключей (LSI, плотность, точные/разбавленные вхожден…
+- `seo-evidence-based-2026` — Evidence-based SEO from DrMax 2026 — grounded in Google API leak signals (siteAuthority, NavBoost, Q*/P*, T…
+- `seo-prompt-engineering-2026` — Advanced SEO strategy framework based on DrMax's 2026 methodology
+- `smm-strategy-frameworks` — Фреймворки SMM-стратегии для российского рынка 2026 — контент-планы, рубрикаторы, KPI, частота публикаций
+- `social-platforms-spec` — Спецификации российских соцсетей для копирайтинга — ВКонтакте, Telegram, Дзен, YouTube Shorts
+- `xmlstock` — [RU: интеграция xmlstock.com — Яндекс Search API, Яндекс Live, Google XML Search, парсинг SERP/картинок/вид…
+- `yandex-direct` — [RU: интеграция Яндекс.Директ API v5 — кампании, ставки, отчёты, автостратегии, песочница] Yandex.Direct AP…
+- `yandex-direct-creatives` — Написать объявление для Яндекс.Директа, разбить CSV кластеры на кампании и группы, шаблоны Direct по intent…
+- `yandex-metrica` — [RU: яндекс метрика, метрика api, logs api, цели метрики] Yandex.Metrika API via api-metrika.yandex.net wit…
+- `yandex-webmaster` — [RU: Яндекс.Вебмастер API — поисковые запросы, индексация, переобход URL, sitemap] Yandex.Webmaster REST AP…
+
+**Tooling & VCS**
+- `biome` — Biome 2 — Rust-based lint + format for JS/TS/JSON/CSS
+- `eslint` — ESLint 10 — JS/TS linter with flat config, typescript-eslint, framework plugins, Prettier/Biome coexistence
+- `git` — Git distributed VCS workflows
+- `gitnexus-cli` — Use when the user needs to run GitNexus CLI commands like analyze/index a repo, check status, clean the ind…
+- `gitnexus-debugging` — Use when the user is debugging a bug, tracing an error, or asking why something fails
+- `gitnexus-exploring` — Use when the user asks how code works, wants to understand architecture, trace execution flows, or explore …
+- `gitnexus-guide` — Documents GitNexus itself — available tools, knowledge graph queries, MCP resources, graph schema, and work…
+- `gitnexus-impact-analysis` — Use when the user wants to know what will break if they change something, or needs safety analysis before e…
+- `gitnexus-pr-review` — Use when the user wants to review a pull request, understand what a PR changes, assess risk of merging, or …
+- `gitnexus-refactoring` — Use when the user wants to rename, extract, split, move, or restructure code safely
+- `vite` — Vite 7 frontend build tool — fast HMR via native ESM, Rollup production builds, plugin ecosystem, modernize…
+
+**Languages**
+- `python` — Python 3.14 foundation — syntax, type hints, packaging with uv, ruff/mypy, asyncio
 - `typescript` — TypeScript expert — TS 6.0 type system, conditional/mapped types, branded types, generics, tsconfig strict …
 
-**vcs**
-- `git` — Git distributed VCS workflows
-
-**vk-bridge**
-- `vk-bridge` — [RU: интеграция VK Mini Apps через VK Bridge — auth, VK Pay, sign launch params] VK Bridge SDK для VK Mini …
-
-**yookassa**
-- `yookassa` — [RU: интеграция ЮKassa] YooKassa by ЮMoney — API v3, Checkout.js widget, payment lifecycle (pending→waiting…
+**Media**
+- `media-asset-pipeline` — Web media asset pipeline & budgets 2026 — glTF/GLB optimization (Draco, meshopt, KTX2 via gltf-transform), …
+- `nano-banana` — Nano Banana / Nano Banana Pro (Google Gemini 2.5 / 3 Flash Image) — multimodal image generation + editing t…
+- `remotion` — Remotion — programmatic video framework where React components render to MP4 / WebM / GIF / stills frame-by…
 <!-- SKILLS:END -->
