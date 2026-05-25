@@ -16,6 +16,7 @@ import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
 import { getActiveRunningJobIds, harvestCompletedOrphans } from "./utils/jobs.ts";
 
 export { validate } from "./validate.ts";
+export { debounce } from "./debounce.ts";
 
 export const server = new Server(
   {
