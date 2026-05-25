@@ -9,6 +9,7 @@ export interface UsageSummary {
   totalPromptChars: number;
   totalOutputChars: number;
   totalAgySeconds: number;
+  totalSuccessAgySeconds: number;
   estimatedTokens: number;
 }
 
@@ -30,6 +31,7 @@ function parseUsageFile(): UsageSummary {
     totalPromptChars: 0,
     totalOutputChars: 0,
     totalAgySeconds: 0,
+    totalSuccessAgySeconds: 0,
     estimatedTokens: 0,
   };
 
@@ -51,6 +53,7 @@ function parseUsageFile(): UsageSummary {
       totalPromptChars: typeof parsed.totalPromptChars === "number" ? parsed.totalPromptChars : 0,
       totalOutputChars: typeof parsed.totalOutputChars === "number" ? parsed.totalOutputChars : 0,
       totalAgySeconds: typeof parsed.totalAgySeconds === "number" ? parsed.totalAgySeconds : 0,
+      totalSuccessAgySeconds: typeof parsed.totalSuccessAgySeconds === "number" ? parsed.totalSuccessAgySeconds : 0,
       estimatedTokens: typeof parsed.estimatedTokens === "number" ? parsed.estimatedTokens : 0,
     };
   } catch (error: unknown) {
@@ -93,6 +96,7 @@ export function recordJobEnd(i: {
   }
   if (i.success) {
     summary.jobsSucceeded += 1;
+    summary.totalSuccessAgySeconds += i.durationMs / 1000;
   } else {
     summary.jobsFailed += 1;
   }

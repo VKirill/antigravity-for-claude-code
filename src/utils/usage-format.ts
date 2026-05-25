@@ -6,6 +6,7 @@ export interface UsageSummary {
   totalPromptChars: number;
   totalOutputChars: number;
   totalAgySeconds: number;
+  totalSuccessAgySeconds: number;
   estimatedTokens: number;
 }
 
@@ -19,6 +20,9 @@ export function formatUsageSummary(s: UsageSummary): string {
   const minutesFormatted = minutes.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const timeVal = `${s.totalAgySeconds.toLocaleString("en-US")}s (${minutesFormatted}m)`;
 
+  const avgSuccessSec = s.jobsSucceeded > 0 ? (s.totalSuccessAgySeconds || 0) / s.jobsSucceeded : 0;
+  const avgSuccessVal = avgSuccessSec.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 3 });
+
   const rows = [
     { label: "Since", value: s.since },
     { label: "Jobs Started", value: s.jobsStarted.toLocaleString("en-US") },
@@ -27,6 +31,7 @@ export function formatUsageSummary(s: UsageSummary): string {
     { label: "Total Prompt Chars", value: s.totalPromptChars.toLocaleString("en-US") },
     { label: "Total Output Chars", value: s.totalOutputChars.toLocaleString("en-US") },
     { label: "Total Agy Seconds", value: timeVal },
+    { label: "Average successful job duration (s)", value: avgSuccessVal },
     { label: "Estimated Tokens", value: s.estimatedTokens.toLocaleString("en-US") },
   ];
 
