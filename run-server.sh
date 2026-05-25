@@ -30,6 +30,23 @@ ln -sf "$REAL_GEMINI/settings.json"           "$MCP_HOME/.gemini/antigravity-cli
 ln -sf "$REAL_GEMINI/installation_id"         "$MCP_HOME/.gemini/antigravity-cli/installation_id"
 ln -sf "$REAL_GEMINI/keybindings.json"        "$MCP_HOME/.gemini/antigravity-cli/keybindings.json"
 
+# MCP servers for the agy worker. WITHOUT this, agy under the isolated $MCP_HOME has ZERO
+# MCP tools — so planners/coders can't call gitnexus_query/serena and waste time scanning
+# the filesystem to "find the project path". We propagate ONLY the set the workers actually
+# reference (gitnexus + serena + postgres + perplexity), NOT the heavy unrelated stdio
+# servers (github/tavily/vue-docs/open-design/…) that would slow per-job startup. The first
+# three are HTTP (serverURL+headers) → agy just connects to the already-running localhost
+# servers; nothing re-indexes the home dir. Extracted at runtime so the bearer token never
+# lands in this repo. Fallback to symlinking the full config if jq is unavailable.
+WORKER_MCP_CFG="$MCP_HOME/.gemini/antigravity-cli/mcp_config.json"
+if command -v jq >/dev/null 2>&1 && [ -f "$REAL_GEMINI/mcp_config.json" ]; then
+  jq '{mcpServers: (.mcpServers | {gitnexus, serena, postgres, perplexity} | with_entries(select(.value != null)))}' \
+     "$REAL_GEMINI/mcp_config.json" > "$WORKER_MCP_CFG" 2>/dev/null \
+   || ln -sf "$REAL_GEMINI/mcp_config.json" "$WORKER_MCP_CFG"
+else
+  ln -sf "$REAL_GEMINI/mcp_config.json" "$WORKER_MCP_CFG"
+fi
+
 # Load user environment variables
 if [ -f "$HOME/.profile" ]; then
     source "$HOME/.profile"
