@@ -15,6 +15,8 @@ import { handleGetUsageStats } from "./tools/usage_stats.ts";
 import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
 import { getActiveRunningJobIds, harvestCompletedOrphans } from "./utils/jobs.ts";
 
+export { validate } from "./validate.ts";
+
 export const server = new Server(
   {
     name: "antigravity-bridge",
