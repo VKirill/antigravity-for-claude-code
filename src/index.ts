@@ -11,6 +11,9 @@ import { handleRunDebateDeliberation, handleRunInteractiveDebate } from "./tools
 import { handleReviewCodeChanges, handleGetProgrammingAdvice } from "./tools/programming.ts";
 import { handleGetDebateReceipt } from "./tools/receipt.ts";
 import { logLifecycleEvent } from "./utils/observability.ts";
+import { handleGetUsageStats } from "./tools/usage_stats.ts";
+import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
+import { getActiveRunningJobIds } from "./utils/jobs.ts";
 
 export const server = new Server(
   {
@@ -251,6 +254,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      { name: "get_usage_stats", description: "Returns all-time agy usage stats (jobs started/succeeded/failed and estimated tokens) as a text table.", inputSchema: { type: "object", properties: {} } }
     ],
   };
 });
@@ -319,15 +323,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return handleGetDebateReceipt(args);
   }
 
+  if (name === "get_usage_stats") return handleGetUsageStats();
+
   throw new Error(`Unknown tool: ${name}`);
 });
 
 export async function startServer() {
+  try { sweepOrphanJobSessions(); } catch (e: unknown) {}
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
 // Run server only if executed directly
 if (import.meta.main) {
+  const shutdown = () => { try { killSessions(getActiveRunningJobIds()); } catch (e: unknown) {} process.exit(0); };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
   await startServer();
 }

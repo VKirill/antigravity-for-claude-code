@@ -2,6 +2,8 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, openSync,
 import { join } from "path";
 import { execSync, spawn } from "child_process";
 import { logLifecycleEvent, captureGitFiles, buildFooter } from "./observability.ts";
+import { recordJobStart, recordJobEnd } from "./usage-store.ts";
+import { estimateTokens } from "./token-estimate.ts";
 
 export interface JobMeta {
   jobId: string;
@@ -19,6 +21,39 @@ export interface JobMeta {
 // In-memory map of active jobs
 const activeJobs = new Map<string, JobMeta>();
 let monitorIntervalId: ReturnType<typeof setInterval> | null = null;
+
+const recordedEnds = new Set<string>();
+
+export function getActiveRunningJobIds(): string[] {
+  const ids: string[] = [];
+  for (const job of activeJobs.values()) {
+    if (job.status === "running") {
+      ids.push(job.jobId);
+    }
+  }
+  return ids;
+}
+
+function recordJobEndSafely(jobId: string, success: boolean, durationMs: number): void {
+  try {
+    if (recordedEnds.has(jobId)) return;
+    recordedEnds.add(jobId);
+    let prompt = "";
+    try {
+      prompt = readFileSync(join(getJobDir(jobId), "prompt.txt"), "utf-8");
+    } catch (e: unknown) {}
+    let output = "";
+    try {
+      output = readFileSync(join(getJobDir(jobId), "output.txt"), "utf-8");
+    } catch (e: unknown) {}
+    recordJobEnd({
+      success,
+      outputChars: output.length,
+      durationMs,
+      estimatedTokens: estimateTokens(prompt + output),
+    });
+  } catch (e: unknown) {}
+}
 
 // Helpers to get paths
 function getProjectCwd(): string {
@@ -169,6 +204,7 @@ export function startTmuxJob(
   };
 
   saveJobMeta(meta);
+  try { recordJobStart({ promptChars: prompt.length }); } catch (e: unknown) {}
 
   // Initialize/start the background crash monitor if not running
   startCrashMonitor();
@@ -219,6 +255,7 @@ export function getJobStatus(jobId: string): JobMeta {
       // completion getNewestConversationId() (newest .pb by mtime) could attribute one
       // job's conversation to another and leak context across tasks.
       saveJobMeta(meta);
+      recordJobEndSafely(jobId, isSuccess, meta.durationMs ?? 0);
 
       logLifecycleEvent(isSuccess ? "agy.async.success" : "agy.async.failed", {
         jobId,
@@ -240,6 +277,7 @@ export function getJobStatus(jobId: string): JobMeta {
       meta.error = "Tmux session exited prematurely without writing exit code.";
       meta.durationMs = Date.now() - meta.startTime;
       saveJobMeta(meta);
+      recordJobEndSafely(jobId, false, meta.durationMs ?? 0);
 
       logLifecycleEvent("agy.async.died", {
         jobId,
@@ -338,6 +376,7 @@ function fireEarlyKill(jobId: string, reason: string): void {
   }
 
   saveJobMeta(meta);
+  recordJobEndSafely(jobId, false, meta.durationMs ?? 0);
 
   logLifecycleEvent("agy.async.killed", {
     jobId,

@@ -36,13 +36,16 @@ describe("index.ts entrypoint tests", () => {
     const response: any = transport.sentMessages[0];
     expect(response.id).toBe(50);
     expect(response.result.tools).toBeArray();
-    expect(response.result.tools.length).toBe(10);
+    expect(response.result.tools.length).toBe(11);
 
     const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity");
     expect(discussTool).toBeDefined();
 
     const resetTool = response.result.tools.find((t: any) => t.name === "reset_antigravity_session");
     expect(resetTool).toBeDefined();
+
+    const usageTool = response.result.tools.find((t: any) => t.name === "get_usage_stats");
+    expect(usageTool).toBeDefined();
   });
 
   test("Unknown tool call triggers error response", async () => {
