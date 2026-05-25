@@ -43,24 +43,25 @@ prior_verifications: [<stdout of failed verification commands>]
 result:
   summary: |
     Diagnosis: <one-sentence root cause>. Confidence: low|medium|high.
+  status: diagnosed
   verification_output: |
     <stdout of your own reproduction run>
   artifacts: []
   errors: []
-diagnosis:
-  root_cause: |
-    One sentence — cause, not symptom.
-  symptom_chain:
-    - "What the test says (1 line)"
-    - "What the code does (1 line)"
-    - "Why they don't match (1 line)"
-  affected_files: [<file:line of the actual problem>]
-  contributing_factors: []
-proposed_fix_strategy: |
-  Concrete approach in 3-5 sentences (where + what + why), not the patch.
-confidence: medium
-risks:
-  - "<edge cases where the strategy might still fail>"
+  diagnosis:
+    root_cause: |
+      One sentence — cause, not symptom.
+    symptom_chain:
+      - "What the test says (1 line)"
+      - "What the code does (1 line)"
+      - "Why they don't match (1 line)"
+    affected_files: [<file:line of the actual problem>]
+    contributing_factors: []
+  proposed_fix_strategy: |
+    Concrete approach in 3-5 sentences (where + what + why), not the patch.
+  confidence: medium
+  risks:
+    - "<edge cases where the strategy might still fail>"
 ````
 Apply `ru-text-quick` to Russian prose.
 

@@ -196,7 +196,9 @@ while task ready --json | jq 'length' > 0:
       parse the ```yaml ... ``` result block
       echo "$transcript" | task save-artifact <id> --kind transcript
       run each verification_commands; collect stdout/stderr
-      if status == success AND all verifications green:
+      # NB: `status` = the async JOB status (success|failed|killed from async_status), which is
+      #     DISTINCT from result.status (the worker's self-reported verdict, e.g. done|paused).
+      if status == success AND result.status not in (paused, needs_decomposition) AND all verifications green:
         git add <files_to_touch> && git commit -m "<task title>"   # YOU commit, serialized
         npx gitnexus analyze (incremental, soft-fail)              # Phase 4→5 handoff
         task update <id> --status done --payload '{"summary":"...","verification":"..."}'
@@ -232,6 +234,10 @@ After each task is committed, dispatch verifier(s) via the async dispatch flow (
 
 Dispatch verifier calls in parallel when independent (respect the same `MAX_PARALLEL` cap as Phase 4). Wait for all to return before deciding next move.
 
+**Reading a verifier result — gate on `result.status`, NOT just on `findings`:** a verifier is **clean only if `result.status == passed`**.
+- `result.status: issues_found` → task FAILED → fix (dispatch `worker-coder` carrying `result.findings`) and re-verify.
+- `result.status: inconclusive` (a check could not RUN — see `result.errors`) → **NOT clean, it's a blocker**: fix the environment / re-dispatch; never let it pass. An empty `result.findings` does **not** mean clean when `result.status` is `inconclusive`.
+
 **Per-task review — ALWAYS a SEPARATE Antigravity pass (never self-review):**
 The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) generate a focused review contract:
 1. Run `git diff HEAD~1 -- <files_to_touch>` (or `git diff -- <files_to_touch>` if changes are not committed yet) to get the exact diff for this task's files.
@@ -243,14 +249,15 @@ The worker (agy) does NOT review its own work — a coder rubber-stamping its ow
    - `context_refs`: [`docs/plans/.../SPEC.md`]
 3. Dispatch a **separate** async dispatch flow call with `worker: "worker-reviewer"` and this new contract. This guarantees the reviewer receives ONLY the specific task diff and doesn't read the whole project.
 
-The reviewer MUST return, in its YAML:
-- `findings` — issues classified critical / high / medium / low (each with `file:line`),
-- `task_fully_implemented` — `yes` / `no`,
-- `missing` — list of acceptance-criteria items not yet satisfied (empty if fully done).
+The reviewer MUST return ONE `result:` YAML block (the unified envelope — see `prompts/skills-catalog.md` → "Result envelope"). Read these fields nested under `result:`:
+- `result.findings` — issues classified critical / high / medium / low (each with `file:line`),
+- `result.task_fully_implemented` — `yes` / `no`,
+- `result.missing` — acceptance-criteria items not yet satisfied (empty if fully done),
+- `result.status` — `passed` / `changes_requested`.
 
 Then act on the result:
-- Any unresolved **critical / high** finding, OR `task_fully_implemented: no` → task FAILED. Dispatch `worker-coder` with a fix contract (carry the findings + missing items), then re-review. Loop up to 2 rounds; if it still fails, surface to the user.
-- Only **medium / low** findings and `task_fully_implemented: yes` → log them and continue.
+- Any unresolved **critical / high** finding, OR `result.task_fully_implemented: no` → task FAILED. Dispatch `worker-coder` with a fix contract (carry the findings + missing items), then re-review. Loop up to 2 rounds; if it still fails, surface to the user.
+- Only **medium / low** findings and `result.task_fully_implemented: yes` → log them and continue.
 
 Persist the reviewer output as a `worker_review` artifact (`task save-artifact <id> --kind worker_review`).
 
@@ -301,7 +308,7 @@ When all checklist items are complete and all verifiers report clean:
 
 5. **NEVER auto-deploy without these gates:**
    - All `verification_commands` from all done tasks green
-   - All verifier subagents returned clean (or only medium/low findings)
+   - Every verifier returned `result.status: passed` — any `issues_found` blocks, any `inconclusive` blocks (empty findings ≠ clean when inconclusive). A reviewer with `result.status: passed` and only medium/low findings is OK.
    - Final Antigravity review gate passed
    - Working tree clean on `main` (no uncommitted changes left)
 

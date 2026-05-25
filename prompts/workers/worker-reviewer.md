@@ -75,17 +75,18 @@ result:
     <linter/type-checker output, if any>
   artifacts: []
   errors: []                 # only if a verification_command failed to RUN (findings go below, not here)
+  status: passed              # passed | changes_requested
   task_fully_implemented: yes # yes | no  — measured against acceptance_criteria
   missing: []                 # acceptance-criteria items not yet satisfied ([] if fully done)
-findings:
-  - severity: critical|high|medium|low
-    file: path/to/file.ts
-    line: 42
-    title: "One-line title"
-    detail: |
-      Why it's a problem. 1-3 sentences.
-    fix_suggestion: |
-      Concrete change/approach — say HOW, not just "fix it".
+  findings:                   # nested under result (empty list if clean)
+    - severity: critical|high|medium|low
+      file: path/to/file.ts
+      line: 42
+      title: "One-line title"
+      detail: |
+        Why it's a problem. 1-3 sentences.
+      fix_suggestion: |
+        Concrete change/approach — say HOW, not just "fix it".
 ````
 
 The orchestrator FAILS the task on any unresolved critical/high OR `task_fully_implemented: no`, and

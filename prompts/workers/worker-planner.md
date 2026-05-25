@@ -56,24 +56,25 @@ result:
   verification_output: ""
   artifacts: []
   errors: []
-spec: |
-  <short SPEC: goal · observable outcomes · touched areas + blast radius · verification plan · simplicity note>
-contracts:
-  - id: TASK-001
-    title: "..."
-    scope: |
+  status: planned
+  spec: |
+    <short SPEC: goal · observable outcomes · touched areas + blast radius · verification plan · simplicity note>
+  contracts:
+    - id: TASK-001
+      title: "..."
+      scope: |
+        ...
+      acceptance_criteria: [...]
+      risk_class: low|medium|high
+      files_to_touch: [...]
+      dependencies: []
+      assignee_agent: worker-coder
+      verification_commands: [...]
+      reuse_patterns: []          # or [{symbol, how}]
+      context_refs: [docs/plans/<feature>/SPEC.md, docs/plans/<feature>/glossary.md]
+      skill_hints: [...]
+    - id: TASK-002
       ...
-    acceptance_criteria: [...]
-    risk_class: low|medium|high
-    files_to_touch: [...]
-    dependencies: []
-    assignee_agent: worker-coder
-    verification_commands: [...]
-    reuse_patterns: []          # or [{symbol, how}]
-    context_refs: [docs/plans/<feature>/SPEC.md, docs/plans/<feature>/glossary.md]
-    skill_hints: [...]
-  - id: TASK-002
-    ...
 ````
 The orchestrator iterates `contracts` and `task insert`s each (it sets the DB; you're read-only).
 

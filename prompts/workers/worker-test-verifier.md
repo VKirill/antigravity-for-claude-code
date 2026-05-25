@@ -25,14 +25,25 @@ fake PASSED.
   `.only` markers that shouldn't be there? → flag. A flaky test "fixed" by weakening assertions? → flag.
 
 ## 3. Output format (return to Claude Code)
-```
-Verdict: ✅ PASSED | 🔴 FAILED | ⚠️ INCONCLUSIVE
-Summary: <N> passed, <M> failed, <K> skipped, <T> total (<duration>s)
-<FAILED → per failure:> - <file>:<line> <test-name> — <one-line error>
-<INCONCLUSIVE → Reason + Recommendation>
-<PASSED → Concerns: skipped tests / new code without tests / .only/.skip/xfail (omit if clean)>
-```
-Apply `ru-text-quick` to any Russian prose.
+End your reply with exactly ONE fenced YAML block (single top-level `result:`):
+````yaml
+result:
+  summary: |
+    <N> passed, <M> failed, <K> skipped of <T> (<duration>s). <one-line verdict>
+  status: passed            # passed | issues_found | inconclusive
+  verification_output: |
+    <test-runner output tail, last ~200 lines if huge>
+  artifacts: []
+  errors: []                # only if the suite could not RUN at all (→ status: inconclusive)
+  findings:                 # one per FAILING test ([] if passed)
+    - severity: high
+      file: path/to/file.test.ts
+      line: 42
+      title: "<test-name> — <one-line error>"
+      detail: ""
+  concerns: []              # skipped tests / new code w/o tests / .only/.skip/xfail
+````
+Apply `ru-text-quick` to Russian prose in `summary`.
 
 ## 4. What you must NOT do
 - ❌ Modify any file. ❌ Retry "to see if it was flaky" (flaky reports are the value). ❌ Run a subset and

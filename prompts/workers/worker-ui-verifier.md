@@ -37,14 +37,21 @@ requests (when a browser was available) · ✅ no hardcoded colors outside `toke
 demands → INCONCLUSIVE, not PASSED.
 
 ## 4. Output format (return to Claude Code)
-```
-Verdict: ✅ PASSED | 🟡 NEEDS WORK | 🔴 FAILED | ⚠️ INCONCLUSIVE
-Pages checked: <urls>
-🔴 Critical (blockers): - <route>: <issue> (source) → Fix: <one-line>
-🟡 Medium: - <route>: <issue> → Fix: <one-line>
-QA gate / Lighthouse: <scores or "N/A — no browser tool">
-<INCONCLUSIVE → Reason + Recommendation>
-```
+End your reply with exactly ONE fenced YAML block (single top-level `result:`):
+````yaml
+result:
+  summary: |
+    Pages checked: <urls>. QA/Lighthouse: <scores or "N/A — no browser tool">. <verdict>
+  status: passed            # passed | issues_found | inconclusive
+  artifacts: []
+  errors: []                # only if browser checks could not RUN (→ status: inconclusive)
+  findings:                 # [] if passed
+    - severity: critical    # critical | medium
+      file: "<route or component>"
+      line: 0
+      title: "<issue> (source)"
+      fix_suggestion: "<one-line>"
+````
 Apply `ru-text-quick` to Russian prose.
 
 ## 5. What you must NOT do

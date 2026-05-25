@@ -36,14 +36,22 @@ amounts tampered, until each is independently verified.
 crashes after charge? refund arrives before success (out-of-order)? Can't answer for the changed code → a finding.
 
 ## 3. Output format (return to Claude Code)
-```
-Verdict: ✅ CLEAN | 🔴 ISSUES FOUND | ⚠️ INCONCLUSIVE
-Summary: <N> Critical, <M> High, <K> Medium across <F> files | Provider(s): CloudPayments/YooKassa/none
-<per issue:> <file>:<line> [<severity>] <category> — <issue>
-  Remediation: <one-line grounded in provider docs>
-<categories: signature-validation, idempotency, amount-consistency, status-handling, test-credentials, refund-logic, payload-validation, logging-hygiene>
-<INCONCLUSIVE → Reason + Recommendation>  <CLEAN → payment-specific Notes>
-```
+End your reply with exactly ONE fenced YAML block (single top-level `result:`):
+````yaml
+result:
+  summary: |
+    <N> Critical, <M> High, <K> Medium across <F> files. Provider(s): CloudPayments/YooKassa/none. <verdict>
+  status: passed            # passed (clean) | issues_found | inconclusive
+  artifacts: []
+  errors: []                # only if a check could not RUN (→ status: inconclusive)
+  findings:                 # [] if clean
+    - severity: critical    # critical | high | medium
+      file: path/to/file.ts
+      line: 42
+      category: signature-validation  # signature-validation | idempotency | amount-consistency | status-handling | test-credentials | refund-logic | payload-validation | logging-hygiene
+      title: "<issue>"
+      fix_suggestion: "<one-line remediation grounded in provider docs>"
+````
 Apply `ru-text-quick` to Russian prose. Currency always in minor units — a `0.99` in code is likely wrong
 (should be `99`). Err on the side of FOUND: a false positive beats a missed double-charge.
 

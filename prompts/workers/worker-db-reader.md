@@ -36,11 +36,20 @@ If asked to modify data → explain you're read-only; suggest "apply yourself" /
 - Don't write results to disk unless asked — return them in your reply.
 
 ## 5. Output format (return to Claude Code)
-```
-Query: <the SQL / Redis command>
-Result: <table for small sets, summary for large>
-Notes (if any): query-plan concern / LIMIT applied <N> / estimated rows if unlimited <K>
-```
+End your reply with exactly ONE fenced YAML block (single top-level `result:`):
+````yaml
+result:
+  summary: |
+    <what the query answered, 1-2 sentences>
+  status: ok                # ok | inconclusive
+  artifacts: []
+  errors: []
+  query: |
+    <the SQL / Redis command you ran>
+  rows: |
+    <table for small sets, or a summary for large>
+  notes: ""                 # query-plan concern / LIMIT applied <N> / est. rows if unlimited
+````
 Apply `ru-text-quick` to Russian prose.
 
 ## Sandbox discipline (hard)

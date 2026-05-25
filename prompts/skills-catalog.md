@@ -11,6 +11,34 @@ training-data defaults.
 
 ---
 
+## Result envelope (EVERY worker — single parse contract)
+
+Every worker ends its reply with **exactly one** fenced ` ```yaml ` block whose only top-level key is
+`result:`. The orchestrator parses that one block — **no worker puts payload outside `result:`**.
+
+**Common keys (all roles):**
+- `summary:` — 1-3 sentences, outcome not actions (always).
+- `status:` — role verdict (always): coder/frontend `done|paused|needs_decomposition`; reviewer
+  `passed|changes_requested`; test/security/payments/ui-verifier `passed|issues_found|inconclusive`;
+  planner `planned`; doctor `diagnosed`; refactor-architect `planned|no_refactor_needed|blocked`;
+  db-reader `ok|inconclusive`.
+- `errors:` — array of failure summaries the worker hit: build/verification failures (coders) or "a check could not RUN" (verifiers → also set `status: inconclusive`). `[]` when all green; never null. Issues/findings go in `findings`, not here.
+- `artifacts:` — array of changed files (coders) / `[]` otherwise.
+- `verification_output:` — optional; command/sweep output.
+
+**Role payload — nested under `result:`**, only the keys for that role:
+- reviewer / verifiers → `findings: [{severity, file, line, title, detail?, category?, fix_suggestion?}]`
+  (only `severity`/`file`/`line`/`title` required; verifiers add `category`, reviewer adds `detail`/`fix_suggestion`).
+  Reviewer also: `task_fully_implemented`, `missing`.
+- planner → `spec`, `contracts: [...]`.
+- doctor → `diagnosis`, `proposed_fix_strategy`, `confidence`, `risks`.
+- refactor-architect → `refactoring_plan`.
+- db-reader → `query`, `rows`, `notes`.
+
+Workers MAY add role-specific extra keys under `result:` (e.g. `self_review`, `discovery_note`, `concerns`) — harmless; the orchestrator reads the documented keys and saves the full transcript anyway.
+
+---
+
 ## Per-role skills (orchestrator: fill `skill_hints` from here)
 
 | Worker (role) | DEFAULT skills (always load) | OPTIONAL — add per task |

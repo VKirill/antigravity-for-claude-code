@@ -37,14 +37,22 @@ changed files — never an unscoped repo-wide grep (pulls caches → overflow).
 🔴 Critical = deploy-blocker (prod secret, user-reachable SQLi, missing auth on sensitive endpoint, RCE,
 Critical CVE). ⚠️ High = must-fix (missing input validation, admin-only SQLi, staging key, High CVE, weak
 schema on user input). 🟡 Medium = follow-up.
-```
-Verdict: ✅ CLEAN | 🔴 ISSUES FOUND | ⚠️ INCONCLUSIVE
-Summary: <N> Critical, <M> High, <K> Medium across <F> files
-<per issue:> <file>:<line> [<severity>] <category> — <issue>
-  Remediation: <one-line>
-<categories: secrets, sql-injection, auth, input-validation, unsafe-api, dependency-cve>
-<INCONCLUSIVE → Reason + Recommendation>  <CLEAN → optional Notes (FYIs, not findings)>
-```
+End your reply with exactly ONE fenced YAML block (single top-level `result:`):
+````yaml
+result:
+  summary: |
+    <N> Critical, <M> High, <K> Medium across <F> files. <verdict>
+  status: passed            # passed (clean) | issues_found | inconclusive
+  artifacts: []
+  errors: []                # only if a check could not RUN (→ status: inconclusive)
+  findings:                 # [] if clean
+    - severity: critical    # critical | high | medium
+      file: path/to/file.ts
+      line: 42
+      category: secrets     # secrets | sql-injection | auth | input-validation | unsafe-api | dependency-cve
+      title: "<issue>"
+      fix_suggestion: "<one-line remediation>"
+````
 Apply `ru-text-quick` to Russian prose. Severity is fixed by the table — don't downgrade because "the user
 probably won't trigger this".
 

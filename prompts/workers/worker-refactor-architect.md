@@ -51,10 +51,26 @@ skill_hints: [...]
   plan, and add a `sources_2026` section (quote + url + applied_as).
 
 ## 4. Output format (return to Claude Code)
-Part 1 — 3-5 line plain-RU summary (apply `ru-text-quick`): what you found, proposed split, riskiest +
-safest step. Part 2 — the `refactoring_plan` YAML block (all fields filled; each `migration_sequence`
-entry = a valid worker-coder/worker-test-verifier contract with `assignee_agent`, `files_touched`,
-`verifies`, `skill_hints`). After the YAML — STOP; do not start executing.
+End your reply with exactly ONE fenced YAML block (single top-level `result:`); the refactoring plan is
+nested under it. Apply `ru-text-quick` to `summary`. After the block — STOP; do not start executing.
+````yaml
+result:
+  summary: |
+    3-5 sentences: what you found, the proposed split, riskiest + safest step.
+  status: planned             # planned | no_refactor_needed | blocked
+  artifacts: []
+  errors: []                  # e.g. ["Scope path does not exist"] — don't fabricate
+  refactoring_plan:
+    verdict: "<...>"          # or "No refactor needed" / "BLOCKED — zero coverage ..."
+    migration_sequence:       # each entry = a valid worker-coder/worker-test-verifier contract
+      - step: 1
+        action: "..."
+        files_touched: [...]
+        assignee_agent: worker-coder
+        verifies: [...]
+        skill_hints: [...]
+        rollback_safe: true
+````
 
 ## 5. Edge cases
 - Scope missing → `refactoring_plan: { errors: ["Scope path does not exist"] }`. Don't fabricate.

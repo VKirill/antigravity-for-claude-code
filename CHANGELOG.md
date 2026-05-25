@@ -3,6 +3,28 @@
 All notable changes to this MCP server are documented here.
 Все значимые изменения этого MCP-сервера документируются здесь.
 
+## v1.5.0 — Unified worker result envelope (2026-05-25)
+
+### English
+
+Every worker now ends with **exactly one `result:` YAML block** — a single parse contract for the orchestrator. Verified coherent end-to-end with Antigravity.
+
+- Verifiers (`test`/`security`/`payments`/`ui`) + `db-reader`: flat text → `result:` YAML.
+- `reviewer` / `planner` / `doctor`: role payload (`findings` / `spec`+`contracts` / `diagnosis`…) now **nested under `result:`** (was top-level); `refactor-architect` wrapped in `result:`.
+- Common keys for all roles: `summary`, `status` (per-role verdict), `errors`, `artifacts`, `verification_output`; role payload nested.
+- Orchestrator now gates verifiers on **`result.status == passed`** — an `inconclusive` verifier (a check couldn't run) no longer false-passes to deploy. Phase 4 distinguishes the async job-status from `result.status` (and respects `paused`/`needs_decomposition`).
+- Canonical contract documented in `prompts/skills-catalog.md` → "Result envelope".
+
+### Русский
+
+Каждый воркер теперь заканчивает ответ **ровно одним блоком `result:`** — единый контракт парсинга для оркестратора. Связность проверена end-to-end вместе с Antigravity.
+
+- Верификаторы (`test`/`security`/`payments`/`ui`) + `db-reader`: плоский текст → `result:` YAML.
+- `reviewer` / `planner` / `doctor`: role-payload (`findings` / `spec`+`contracts` / `diagnosis`…) теперь **вложен под `result:`** (был на верхнем уровне); `refactor-architect` обёрнут в `result:`.
+- Общие поля у всех ролей: `summary`, `status` (вердикт роли), `errors`, `artifacts`, `verification_output`; role-payload вложен.
+- Оркестратор гейтит верификаторы по **`result.status == passed`** — `inconclusive` (проверка не запустилась) больше не проходит ложно в деплой. Phase 4 различает async job-status и `result.status` (учитывает `paused`/`needs_decomposition`).
+- Канон описан в `prompts/skills-catalog.md` → раздел "Result envelope".
+
 ## v1.4.0 — Security & robustness hardening + worker-prompt audit (2026-05-25)
 
 ### English
