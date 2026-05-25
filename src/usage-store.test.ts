@@ -1,37 +1,12 @@
-import { test, expect, describe, beforeEach, mock } from "bun:test";
+import { test, expect, describe, beforeEach } from "bun:test";
+import {
+  resetMockState,
+  mockFsFiles,
+  setMockFsReadShouldThrow,
+  setMockFsWriteShouldThrow
+} from "./test-setup.ts";
 
-let mockFilesData = new Map<string, string>();
-let mockExistsDirs = new Set<string>();
-let readError = false;
-let writeError = false;
-
-mock.module("fs", () => {
-  return {
-    existsSync: (path: string) => {
-      return mockFilesData.has(path) || mockExistsDirs.has(path);
-    },
-    readFileSync: (path: string, encoding: string) => {
-      if (readError) {
-        throw new Error("Simulated read error");
-      }
-      if (!mockFilesData.has(path)) {
-        throw new Error(`ENOENT: no such file or directory, open '${path}'`);
-      }
-      return mockFilesData.get(path) || "";
-    },
-    writeFileSync: (path: string, data: string, encoding: string) => {
-      if (writeError) {
-        throw new Error("Simulated write error");
-      }
-      mockFilesData.set(path, data);
-    },
-    mkdirSync: (path: string, options?: { recursive?: boolean }) => {
-      mockExistsDirs.add(path);
-    }
-  };
-});
-
-// Import the module AFTER mock.module is declared
+// Import the module AFTER mock is declared in test-setup
 import {
   recordJobStart,
   recordJobEnd,
@@ -40,10 +15,7 @@ import {
 
 describe("usage-store", () => {
   beforeEach(() => {
-    mockFilesData.clear();
-    mockExistsDirs.clear();
-    readError = false;
-    writeError = false;
+    resetMockState();
   });
 
   test("getUsageSummary on a missing file yields all zeros", () => {
@@ -61,7 +33,7 @@ describe("usage-store", () => {
   test("getUsageSummary on malformed JSON yields zeros (soft-fail)", () => {
     // Write malformed JSON
     const filePath = `${process.env.PWD || process.cwd()}/.claude/agy-usage.json`;
-    mockFilesData.set(filePath, "{invalid-json}");
+    mockFsFiles.set(filePath, "{invalid-json}");
     
     const summary = getUsageSummary();
     expect(summary.since).toBe("");
@@ -157,23 +129,23 @@ describe("usage-store", () => {
 
   test("read/write errors soft-fail and swallow", () => {
     // 1. Write error soft-fail during job start
-    writeError = true;
+    setMockFsWriteShouldThrow(true);
     expect(() => recordJobStart({ promptChars: 10 })).not.toThrow();
     
     // Reset write error, verify file wasn't written
-    writeError = false;
+    setMockFsWriteShouldThrow(false);
     expect(getUsageSummary().jobsStarted).toBe(0);
 
     // 2. Read error soft-fail during getUsageSummary
     recordJobStart({ promptChars: 10 });
     expect(getUsageSummary().jobsStarted).toBe(1);
     
-    readError = true;
+    setMockFsReadShouldThrow(true);
     // getUsageSummary should return zeroed values
     const summary = getUsageSummary();
     expect(summary.jobsStarted).toBe(0);
     expect(summary.since).toBe("");
 
-    readError = false;
+    setMockFsReadShouldThrow(false);
   });
 });

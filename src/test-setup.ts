@@ -33,6 +33,20 @@ export let lastAppendFileSyncPath = "";
 export let lastAppendFileSyncData = "";
 export let appendFileSyncCalls: { filePath: string; data: string }[] = [];
 
+// Generic in-memory file mock state
+export let mockFsFiles = new Map<string, string>();
+export let mockFsDirs = new Set<string>();
+export let mockFsReadShouldThrow = false;
+export let mockFsWriteShouldThrow = false;
+export let mockExitCodeSessions = new Set<string>();
+
+// tmux execSync mock state
+export let mockTmuxSessions: string[] = [];
+export let mockExecSyncShouldThrow = false;
+export let execSyncCalls: string[] = [];
+export let mockKillShouldThrow = false;
+export let existsSyncCalls: string[] = [];
+
 // Setters to allow test files to modify the state in ESM
 export function setMockSpawnOutput(val: typeof mockSpawnOutput) { mockSpawnOutput = val; }
 export function setMockFiles(val: typeof mockFiles) { mockFiles = val; }
@@ -46,6 +60,11 @@ export function setMockSpawnSyncOutput(val: typeof mockSpawnSyncOutput) { mockSp
 export function setLastSpawnSyncArgs(val: string[]) { lastSpawnSyncArgs = val; }
 export function setLastAppendFileSyncPath(val: string) { lastAppendFileSyncPath = val; }
 export function setLastAppendFileSyncData(val: string) { lastAppendFileSyncData = val; }
+export function setMockFsReadShouldThrow(val: boolean) { mockFsReadShouldThrow = val; }
+export function setMockFsWriteShouldThrow(val: boolean) { mockFsWriteShouldThrow = val; }
+export function setMockTmuxSessions(val: string[]) { mockTmuxSessions = val; }
+export function setMockExecSyncShouldThrow(val: boolean) { mockExecSyncShouldThrow = val; }
+export function setMockKillShouldThrow(val: boolean) { mockKillShouldThrow = val; }
 
 // Reset helper
 export function resetMockState() {
@@ -62,6 +81,17 @@ export function resetMockState() {
   lastAppendFileSyncPath = "";
   lastAppendFileSyncData = "";
   appendFileSyncCalls = [];
+  
+  mockFsFiles.clear();
+  mockFsDirs.clear();
+  mockFsReadShouldThrow = false;
+  mockFsWriteShouldThrow = false;
+  mockExitCodeSessions.clear();
+  mockTmuxSessions = [];
+  mockExecSyncShouldThrow = false;
+  execSyncCalls = [];
+  mockKillShouldThrow = false;
+  existsSyncCalls = [];
 }
 
 mock.module("child_process", () => {
@@ -158,6 +188,32 @@ mock.module("child_process", () => {
         stdout: stdout,
         stderr: mockSpawnSyncOutput.stderr
       };
+    },
+    execSync: (cmd: string, options?: { encoding?: string; stdio?: unknown }): string | Buffer => {
+      execSyncCalls.push(cmd);
+      if (cmd.includes("list-sessions")) {
+        if (mockExecSyncShouldThrow) {
+          throw new Error("tmux: server not running");
+        }
+        const output = mockTmuxSessions.join("\n") + "\n";
+        if (options?.encoding === "utf-8") {
+          return output;
+        }
+        return Buffer.from(output, "utf-8");
+      }
+      if (cmd.includes("kill-session")) {
+        if (cmd.includes("fail-id") || mockKillShouldThrow) {
+          throw new Error("Simulated kill failure");
+        }
+        if (options?.encoding === "utf-8") {
+          return "";
+        }
+        return Buffer.from("", "utf-8");
+      }
+      if (options?.encoding === "utf-8") {
+        return "";
+      }
+      return Buffer.from("", "utf-8");
     }
   };
 });
@@ -190,13 +246,45 @@ mock.module("fs", () => {
       slice.copy(buffer, offset);
       return slice.length;
     },
-    readFileSync: (filePath: string, encoding: string) => {
+    readFileSync: (filePath: string, encoding?: string) => {
+      if (mockFsReadShouldThrow) {
+        throw new Error("Simulated read error");
+      }
+      if (mockFsFiles.has(filePath)) {
+        return mockFsFiles.get(filePath)!;
+      }
       if (filePath.endsWith("output.txt")) {
         return "Final output from agy";
       }
       return mockAuditLogContent;
     },
+    writeFileSync: (filePath: string, data: string, encoding?: string) => {
+      if (mockFsWriteShouldThrow) {
+        throw new Error("Simulated write error");
+      }
+      mockFsFiles.set(filePath, data);
+    },
+    mkdirSync: (filePath: string, options?: { recursive?: boolean }) => {
+      mockFsDirs.add(filePath);
+    },
     existsSync: (filePath: string) => {
+      existsSyncCalls.push(filePath);
+      const normalized = filePath.replace(/\\/g, "/");
+      if (normalized.endsWith("exit_code.txt")) {
+        const parts = normalized.split("/");
+        const idx = parts.indexOf("exit_code.txt");
+        if (idx > 0) {
+          const sessionName = parts[idx - 1];
+          return mockExitCodeSessions.has(sessionName);
+        }
+        return false;
+      }
+      if (mockFsFiles.has(filePath)) {
+        return true;
+      }
+      if (mockFsDirs.has(filePath)) {
+        return true;
+      }
       if (filePath.endsWith("hooks-audit.jsonl")) {
         return mockExistsSyncResult;
       }
@@ -205,7 +293,7 @@ mock.module("fs", () => {
       }
       return false;
     },
-    appendFileSync: (filePath: string, data: string, encoding: string) => {
+    appendFileSync: (filePath: string, data: string, encoding?: string) => {
       lastAppendFileSyncPath = filePath;
       lastAppendFileSyncData = data;
       appendFileSyncCalls.push({ filePath, data });

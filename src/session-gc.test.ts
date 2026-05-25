@@ -1,55 +1,26 @@
-import { test, expect, describe, beforeEach, mock } from "bun:test";
+import { test, expect, describe, beforeEach } from "bun:test";
+import {
+  resetMockState,
+  mockExitCodeSessions,
+  execSyncCalls,
+  existsSyncCalls,
+  setMockTmuxSessions,
+  setMockExecSyncShouldThrow
+} from "./test-setup.ts";
 
-let mockExecSyncOutput = "";
-let mockExecSyncError: Error | null = null;
-const execSyncCalls: string[] = [];
-
-const mockExistsSyncMap = new Map<string, boolean>();
-const existsSyncCalls: string[] = [];
-
-mock.module("child_process", () => {
-  return {
-    execSync: (cmd: string, options?: { encoding?: string; stdio?: unknown }): string | Buffer => {
-      execSyncCalls.push(cmd);
-      if (mockExecSyncError) {
-        throw mockExecSyncError;
-      }
-      if (options?.encoding === "utf-8") {
-        return mockExecSyncOutput;
-      }
-      return Buffer.from(mockExecSyncOutput, "utf-8");
-    }
-  };
-});
-
-mock.module("fs", () => {
-  return {
-    existsSync: (path: string): boolean => {
-      existsSyncCalls.push(path);
-      return mockExistsSyncMap.get(path) ?? false;
-    }
-  };
-});
-
-// Import the module AFTER mock.module is declared
+// Import the module AFTER mocks are registered in test-setup
 import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
 
 describe("session-gc tests", () => {
   beforeEach(() => {
-    mockExecSyncOutput = "";
-    mockExecSyncError = null;
-    execSyncCalls.length = 0;
-    mockExistsSyncMap.clear();
-    existsSyncCalls.length = 0;
+    resetMockState();
   });
 
   test("a finished candidate (exit_code.txt exists) gets killed and returned", () => {
-    mockExecSyncOutput = "my-job-123\ntask-456\n";
+    setMockTmuxSessions(["my-job-123", "task-456"]);
     
-    // Set existsSync to true for both candidate files
-    const projectCwd = process.env.PWD || process.cwd();
-    mockExistsSyncMap.set(`${projectCwd}/.claude/jobs/my-job-123/exit_code.txt`, true);
-    mockExistsSyncMap.set(`${projectCwd}/.claude/jobs/task-456/exit_code.txt`, true);
+    mockExitCodeSessions.add("my-job-123");
+    mockExitCodeSessions.add("task-456");
 
     const result = sweepOrphanJobSessions();
     expect(result.killed).toEqual(["my-job-123", "task-456"]);
@@ -61,11 +32,9 @@ describe("session-gc tests", () => {
   });
 
   test("a still-running candidate (no exit_code.txt) is NOT killed", () => {
-    mockExecSyncOutput = "my-job-running\n";
+    setMockTmuxSessions(["my-job-running"]);
     
-    // exit_code.txt does not exist
-    const projectCwd = process.env.PWD || process.cwd();
-    mockExistsSyncMap.set(`${projectCwd}/.claude/jobs/my-job-running/exit_code.txt`, false);
+    // exit_code.txt does not exist (not added to mockExitCodeSessions)
 
     const result = sweepOrphanJobSessions();
     expect(result.killed).toEqual([]);
@@ -75,11 +44,10 @@ describe("session-gc tests", () => {
   });
 
   test("non-job session names are ignored", () => {
-    mockExecSyncOutput = "random-tmux-session\n";
+    setMockTmuxSessions(["random-tmux-session"]);
     
-    // Even if exit_code.txt exists by some chance, it's not an agy session name
-    const projectCwd = process.env.PWD || process.cwd();
-    mockExistsSyncMap.set(`${projectCwd}/.claude/jobs/random-tmux-session/exit_code.txt`, true);
+    // Even if exit_code.txt exists, it's not an agy session name
+    mockExitCodeSessions.add("random-tmux-session");
 
     const result = sweepOrphanJobSessions();
     expect(result.killed).toEqual([]);
@@ -90,7 +58,7 @@ describe("session-gc tests", () => {
   });
 
   test("tmux-not-running (execSync throws on list) returns an empty killed list without throwing", () => {
-    mockExecSyncError = new Error("tmux: server not running");
+    setMockExecSyncShouldThrow(true);
 
     const result = sweepOrphanJobSessions();
     expect(result.killed).toEqual([]);
@@ -98,23 +66,10 @@ describe("session-gc tests", () => {
   });
 
   test("killSessions issues one kill per id and tolerates a failing kill", () => {
-    // We want killSessions to invoke tmux kill-session for each ID
+    // We want killSessions to invoke tmux kill-session for each ID.
+    // The central mock in test-setup.ts will throw on "fail-id".
     // Even if the first one throws, the second one should still be invoked.
     
-    let callCount = 0;
-    mock.module("child_process", () => {
-      return {
-        execSync: (cmd: string): string => {
-          execSyncCalls.push(cmd);
-          callCount++;
-          if (cmd.includes("fail-id")) {
-            throw new Error("Simulated kill failure");
-          }
-          return "";
-        }
-      };
-    });
-
     killSessions(["fail-id", "success-id"]);
 
     expect(execSyncCalls).toContain('tmux kill-session -t "fail-id"');
