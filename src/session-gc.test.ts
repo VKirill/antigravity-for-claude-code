@@ -75,4 +75,30 @@ describe("session-gc tests", () => {
     expect(execSyncCalls).toContain('tmux kill-session -t "fail-id"');
     expect(execSyncCalls).toContain('tmux kill-session -t "success-id"');
   });
+
+  test("session name containing shell metacharacters is skipped in sweepOrphanJobSessions while a valid sibling is processed", () => {
+    setMockTmuxSessions(["my-job-valid", "my-job-invalid; rm -rf", "task-valid", "task-$(invalid)"]);
+    
+    mockExitCodeSessions.add("my-job-valid");
+    mockExitCodeSessions.add("my-job-invalid; rm -rf");
+    mockExitCodeSessions.add("task-valid");
+    mockExitCodeSessions.add("task-$(invalid)");
+
+    const result = sweepOrphanJobSessions();
+    expect(result.killed).toEqual(["my-job-valid", "task-valid"]);
+
+    expect(execSyncCalls).toContain('tmux kill-session -t "my-job-valid"');
+    expect(execSyncCalls).toContain('tmux kill-session -t "task-valid"');
+    expect(execSyncCalls).not.toContain('tmux kill-session -t "my-job-invalid; rm -rf"');
+    expect(execSyncCalls).not.toContain('tmux kill-session -t "task-$(invalid)"');
+  });
+
+  test("session name containing shell metacharacters is skipped in killSessions while a valid sibling is processed", () => {
+    killSessions(["valid-id", "invalid; id", "task-valid-2", "invalid$()id"]);
+    expect(execSyncCalls).toContain('tmux kill-session -t "valid-id"');
+    expect(execSyncCalls).toContain('tmux kill-session -t "task-valid-2"');
+    expect(execSyncCalls).not.toContain('tmux kill-session -t "invalid; id"');
+    expect(execSyncCalls).not.toContain('tmux kill-session -t "invalid$()id"');
+  });
 });
+

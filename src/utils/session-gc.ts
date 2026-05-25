@@ -2,6 +2,12 @@ import { execSync } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
 
+const SESSION_NAME_REGEX = /^[A-Za-z0-9._-]+$/;
+
+function isValidSessionName(name: string): boolean {
+  return SESSION_NAME_REGEX.test(name);
+}
+
 /**
  * Sweep orphan tmux sessions that were left behind after job completion.
  * A session is considered an orphan if it is an agy job session (containing "-job-" or starting with "task-")
@@ -27,6 +33,10 @@ export function sweepOrphanJobSessions(): { killed: string[] } {
   for (const rawLine of lines) {
     const sessionName = rawLine.trim();
     if (!sessionName) {
+      continue;
+    }
+
+    if (!isValidSessionName(sessionName)) {
       continue;
     }
 
@@ -58,6 +68,9 @@ export function sweepOrphanJobSessions(): { killed: string[] } {
  */
 export function killSessions(jobIds: string[]): void {
   for (const id of jobIds) {
+    if (!isValidSessionName(id)) {
+      continue;
+    }
     try {
       execSync(`tmux kill-session -t "${id}"`, { stdio: "ignore" });
     } catch (err: unknown) {
