@@ -1,0 +1,58 @@
+// Idempotent seed script for Prisma 7 — runnable multiple times safely.
+// Wire via prisma.config.ts → migrations.seed = "tsx prisma/seed.ts"
+
+import { PrismaClient } from '../generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import 'dotenv/config';
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+});
+
+async function main() {
+  // --- Roles (lookup data — always needed) ---
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@example.com' },
+    create: { email: 'admin@example.com', name: 'Admin', role: 'ADMIN' },
+    update: {},
+  });
+
+  // --- Tags ---
+  await prisma.tag.createMany({
+    skipDuplicates: true,
+    data: [
+      { name: 'tech' },
+      { name: 'business' },
+      { name: 'design' },
+      { name: 'lifestyle' },
+    ],
+  });
+
+  // --- Demo data (skip in production) ---
+  if (process.env.NODE_ENV !== 'production') {
+    for (let i = 0; i < 10; i++) {
+      await prisma.post.upsert({
+        where: { slug: `seed-post-${i}` },
+        create: {
+          slug: `seed-post-${i}`,
+          title: `Seed Post ${i}`,
+          body: `Body of seed post ${i}. Lorem ipsum dolor sit amet.`,
+          published: i % 2 === 0,
+          authorId: admin.id,
+          tags: { connect: [{ name: i % 3 === 0 ? 'tech' : 'business' }] },
+        },
+        update: {},
+      });
+    }
+  }
+
+  console.log('seed complete');
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
+  });

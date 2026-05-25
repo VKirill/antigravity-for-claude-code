@@ -1,0 +1,75 @@
+# Security audit — {{PROJECT_NAME}}
+
+**Date:** {{DATE}}
+**Scope:** {{SCOPE_DESCRIPTION}}
+**Scanned files:** {{FILES_COUNT}}
+**Tools used:** {{TOOLS_LIST}}
+
+## Verdict
+
+**{{VERDICT}}** — {{ONE_LINE_SUMMARY}}
+
+| Severity | Count |
+|---|---|
+| 🔴 Critical | {{CRITICAL_COUNT}} |
+| ⚠️ High | {{HIGH_COUNT}} |
+| 🟡 Medium | {{MEDIUM_COUNT}} |
+| 🟢 Low / informational | {{LOW_COUNT}} |
+
+## 🔴 Critical findings (deploy blockers)
+
+{{CRITICAL_FINDINGS}}
+
+<!-- For each:
+### {{FINDING_TITLE}}
+- **File:line:** `{{FILE}}:{{LINE}}`
+- **Class:** {{OWASP_CATEGORY}}
+- **Reachability:** {{REACHABLE_FROM_USER_INPUT?}}
+- **Description:** {{ONE_PARAGRAPH}}
+- **Evidence:**
+  ```{{LANG}}
+  {{CODE_SNIPPET}}
+  ```
+- **Fix:** {{ONE_LINE_REMEDIATION}}
+- **Effort:** {{S/M/L}}
+-->
+
+## ⚠️ High findings (must-fix this PR)
+
+{{HIGH_FINDINGS}}
+
+## 🟡 Medium findings (follow-up acceptable)
+
+{{MEDIUM_FINDINGS}}
+
+## 🟢 Low / informational
+
+{{LOW_FINDINGS}}
+
+## Remediation plan
+
+Ordered by exploitability × blast-radius, not raw severity:
+
+1. {{TOP_PRIORITY_ITEM}} — Effort: {{EFFORT}} (S/M/L/XL по rubric в remediation-plan.md)
+2. ...
+
+## Tools output (appendix)
+
+- `osv-scanner` findings: {{COUNT}}
+- `npm audit` / `pip-audit` / etc.: {{COUNT}}
+- `gitleaks` findings: {{COUNT}}
+- `semgrep` findings: {{COUNT}}
+
+## What was NOT checked (transparency)
+
+{{LIMITATIONS}}
+
+<!-- e.g.:
+- Live exploitation: out of scope (defensive-only audit)
+- Compliance gaps (SOC2/PCI): not assessed
+- Frontend visual security (clickjacking via UI redress): tested only via headers, no UX-level review
+-->
+
+## Next audit recommended
+
+- After {{TRIGGER}} (e.g., "next dependency bump", "next auth refactor", "before public launch")

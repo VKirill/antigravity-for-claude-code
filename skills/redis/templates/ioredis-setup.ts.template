@@ -1,0 +1,91 @@
+// ioredis setup with retry, TLS, ACL user, graceful shutdown.
+// Works against a single primary OR Sentinel OR Cluster — flip the constructor.
+
+import Redis, { type RedisOptions, type Cluster } from 'ioredis';
+import { z } from 'zod';
+
+const env = z.object({
+  REDIS_URL: z.string().optional(),
+  REDIS_HOST: z.string().default('127.0.0.1'),
+  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_USERNAME: z.string().optional(),
+  REDIS_PASSWORD: z.string().optional(),
+  REDIS_DB: z.coerce.number().default(0),
+  REDIS_TLS: z.coerce.boolean().default(false),
+  REDIS_SENTINELS: z.string().optional(),     // 's1:26379,s2:26379,s3:26379'
+  REDIS_SENTINEL_NAME: z.string().optional(),
+  REDIS_CLUSTER_NODES: z.string().optional(),  // 'n1:7000,n2:7000,n3:7000'
+}).parse(process.env);
+
+const baseOptions: RedisOptions = {
+  username: env.REDIS_USERNAME,
+  password: env.REDIS_PASSWORD,
+  db: env.REDIS_DB,
+  tls: env.REDIS_TLS ? {} : undefined,
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+  reconnectOnError: (err) => {
+    // Reconnect on READONLY (replica failover) and ECONNRESET
+    return err.message.includes('READONLY') || err.message.includes('ECONNRESET');
+  },
+  enableReadyCheck: true,
+  enableOfflineQueue: true,
+  lazyConnect: false,
+};
+
+export function buildRedis(): Redis | Cluster {
+  if (env.REDIS_CLUSTER_NODES) {
+    const nodes = env.REDIS_CLUSTER_NODES.split(',').map((s) => {
+      const [host, port] = s.split(':');
+      return { host, port: Number(port) };
+    });
+    return new Redis.Cluster(nodes, {
+      redisOptions: baseOptions,
+      scaleReads: 'slave',
+      enableAutoPipelining: true,
+    });
+  }
+
+  if (env.REDIS_SENTINELS && env.REDIS_SENTINEL_NAME) {
+    const sentinels = env.REDIS_SENTINELS.split(',').map((s) => {
+      const [host, port] = s.split(':');
+      return { host, port: Number(port) };
+    });
+    return new Redis({
+      ...baseOptions,
+      sentinels,
+      name: env.REDIS_SENTINEL_NAME,
+    });
+  }
+
+  if (env.REDIS_URL) {
+    return new Redis(env.REDIS_URL, baseOptions);
+  }
+
+  return new Redis({
+    ...baseOptions,
+    host: env.REDIS_HOST,
+    port: env.REDIS_PORT,
+  });
+}
+
+export const redis = buildRedis();
+
+redis.on('error', (err) => {
+  console.error('[redis]', err.message);
+});
+redis.on('connect', () => console.log('[redis] connected'));
+redis.on('ready',   () => console.log('[redis] ready'));
+redis.on('end',     () => console.log('[redis] disconnected'));
+
+// Graceful shutdown
+async function close() {
+  try {
+    await redis.quit();
+  } catch {
+    // ignore — connection may already be closed
+  }
+}
+
+process.once('SIGTERM', close);
+process.once('SIGINT',  close);

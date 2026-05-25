@@ -1,0 +1,62 @@
+// @fastify/jwt authentication plugin — hoisted via fastify-plugin.
+// Decorates the instance with `authenticate` preHandler.
+
+import fp from 'fastify-plugin';
+import fastifyJwt, { type FastifyJWTOptions } from '@fastify/jwt';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    authenticate: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  }
+  interface FastifyJWT {
+    payload: { sub: string; role: 'user' | 'admin' };
+    user:    { sub: string; role: 'user' | 'admin' };
+  }
+}
+
+interface AuthOpts extends Partial<FastifyJWTOptions> {
+  secret: string;
+}
+
+async function authPlugin(app: FastifyInstance, opts: AuthOpts) {
+  await app.register(fastifyJwt, {
+    secret: opts.secret,
+    sign: { expiresIn: '15m', algorithm: 'HS256', iss: 'my-app' },
+    verify: { allowedIss: 'my-app' },
+  });
+
+  app.decorate('authenticate', async (req, reply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+  });
+}
+
+export default fp(authPlugin, { name: 'auth' });
+
+// --- Usage ---
+//
+// import authPlugin from './plugins/auth.ts';
+// await app.register(authPlugin, { secret: process.env.JWT_SECRET! });
+//
+// app.get('/me', { preHandler: app.authenticate }, async (req) => {
+//   return { sub: req.user.sub, role: req.user.role };
+// });
+//
+// // Issue a token at login:
+// const token = app.jwt.sign({ sub: user.id, role: user.role });
+// reply.send({ token });
+//
+// // Or via reply (refreshes claims):
+// const token = await reply.jwtSign({ sub: user.id, role: user.role });
+//
+// // Role-gated routes:
+// function requireRole(role: 'admin') {
+//   return async (req: FastifyRequest, reply: FastifyReply) => {
+//     if (req.user.role !== role) return reply.code(403).send({ error: 'forbidden' });
+//   };
+// }
+// app.get('/admin', { preHandler: [app.authenticate, requireRole('admin')] }, handler);

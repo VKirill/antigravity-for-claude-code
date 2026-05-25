@@ -1,0 +1,214 @@
+// templates/express-server.ts.template
+// Purpose: Production-grade Express 5 server with error handling, Pino logging,
+//          health route, graceful shutdown, and OpenTelemetry init stub.
+// Usage:   Copy to src/app/server.ts, replace {{placeholders}}, run `npm install`.
+// Deps:    express, helmet, cors, express-rate-limit, pino-http, zod
+
+import express, { Application, Request, Response, NextFunction } from 'express'
+import helmet from 'helmet'
+import cors from 'cors'
+import rateLimit from 'express-rate-limit'
+import { pinoHttp } from 'pino-http'
+import pino from 'pino'
+import { z } from 'zod'
+import http from 'node:http'
+
+// ---------------------------------------------------------------------------
+// Instrumentation — MUST load before app code when using OpenTelemetry
+// In package.json scripts: "start": "node --import ./dist/instrumentation.js dist/app/index.js"
+// ---------------------------------------------------------------------------
+// import './instrumentation.js'  // uncomment if OTel is wired
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
+  PORT: z.coerce.number().default(3000),
+  HOST: z.string().default('0.0.0.0'),
+  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+  CORS_ORIGIN: z.string().default('{{cors_origin}}'),
+})
+
+export type Env = z.infer<typeof EnvSchema>
+
+const parseEnv = (): Env => {
+  const result = EnvSchema.safeParse(process.env)
+  if (!result.success) {
+    console.error('Invalid environment variables:', result.error.flatten().fieldErrors)
+    process.exit(1)
+  }
+  return result.data
+}
+
+// ---------------------------------------------------------------------------
+// App error hierarchy
+// ---------------------------------------------------------------------------
+export class AppError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly statusCode: number = 500,
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+    this.name = 'AppError'
+    Error.captureStackTrace(this, this.constructor)
+  }
+}
+
+export class NotFoundError extends AppError {
+  constructor(resource: string, id: string) {
+    super(`${resource} ${id} not found`, 'NOT_FOUND', 404)
+  }
+}
+
+export class ValidationError extends AppError {
+  constructor(message: string) {
+    super(message, 'VALIDATION_ERROR', 400)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Logger
+// ---------------------------------------------------------------------------
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  transport: process.env.NODE_ENV === 'development'
+    ? { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss Z' } }
+    : undefined,
+  redact: {
+    paths: ['req.headers.authorization', '*.password', '*.secret', '*.token'],
+    censor: '[REDACTED]',
+  },
+})
+
+// ---------------------------------------------------------------------------
+// Build Express app
+// ---------------------------------------------------------------------------
+export function buildApp(env: Env): Application {
+  const app = express()
+
+  app.set('trust proxy', 1)  // required behind Angie/nginx/load balancer
+
+  // Security headers
+  app.use(helmet({
+    contentSecurityPolicy: env.NODE_ENV === 'production',
+  }))
+
+  // CORS
+  app.use(cors({
+    origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: true,
+  }))
+
+  // Rate limiting
+  app.use(rateLimit({
+    windowMs: 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
+  }))
+
+  // Structured request logging (attaches req.log for per-request logging)
+  app.use(pinoHttp({ logger, useLevel: 'info' }))
+
+  // Body parsing
+  app.use(express.json({ limit: '1mb' }))
+  app.use(express.urlencoded({ extended: false }))
+
+  // Health route — no auth/rate-limit for k8s probes
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() })
+  })
+
+  // Register domain routes here:
+  // app.use('/api/users', usersRouter)
+
+  // 404 handler
+  app.use((_req, res) => {
+    res.status(404).json({ code: 'NOT_FOUND', message: 'Route not found' })
+  })
+
+  // Global error handler — must have 4 params (err, req, res, next)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    const log = (req as any).log ?? logger
+
+    if (err instanceof AppError) {
+      log.warn({ code: err.code, cause: err.cause }, err.message)
+      return res.status(err.statusCode).json({ code: err.code, message: err.message })
+    }
+
+    log.error({ err }, 'Unhandled error')
+    return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' })
+  })
+
+  return app
+}
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+function setupShutdown(
+  server: http.Server,
+  closeExternal: () => Promise<void>,
+): void {
+  let isShuttingDown = false
+
+  const shutdown = async (signal: string): Promise<void> => {
+    if (isShuttingDown) return
+    isShuttingDown = true
+    logger.info({ signal }, 'Shutdown signal received')
+
+    const deadline = setTimeout(() => {
+      logger.error('Graceful shutdown timed out, forcing exit')
+      process.exit(1)
+    }, 30_000)
+    deadline.unref()
+
+    server.close(async (err) => {
+      if (err) logger.error({ err }, 'Error closing HTTP server')
+      try {
+        await closeExternal()
+        clearTimeout(deadline)
+        logger.info('Shutdown complete')
+        process.exit(0)
+      } catch (closeErr) {
+        logger.error({ err: closeErr }, 'Error during shutdown')
+        process.exit(1)
+      }
+    })
+  }
+
+  process.once('SIGTERM', () => shutdown('SIGTERM'))
+  process.once('SIGINT',  () => shutdown('SIGINT'))
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+export async function startServer(): Promise<void> {
+  const env = parseEnv()
+  const app = buildApp(env)
+  const server = http.createServer(app)
+
+  // Wire external resources here:
+  // const db = await connectDatabase(env.DATABASE_URL)
+  // const redis = new IORedis(env.REDIS_URL)
+
+  setupShutdown(server, async () => {
+    // await db.end()
+    // await redis.quit()
+  })
+
+  await new Promise<void>((resolve) => {
+    server.listen({ port: env.PORT, host: env.HOST }, resolve)
+  })
+
+  logger.info({ port: env.PORT, host: env.HOST, env: env.NODE_ENV }, 'Server started')
+
+  if (process.send) process.send('ready')
+}

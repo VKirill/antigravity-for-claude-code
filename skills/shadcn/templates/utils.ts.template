@@ -1,0 +1,16 @@
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+/**
+ * cn() — class composition helper for shadcn/ui components.
+ *
+ * Combines clsx (conditional classes) with tailwind-merge (deduplication).
+ * tailwind-merge ensures the last conflicting Tailwind class wins:
+ *   cn("px-4 py-2", "px-8") → "py-2 px-8"  (px-4 is overridden)
+ *
+ * Use in every component that accepts a `className` prop:
+ *   <div className={cn("base-styles", isActive && "active-styles", className)} />
+ */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}

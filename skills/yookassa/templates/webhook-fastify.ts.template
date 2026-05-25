@@ -1,0 +1,114 @@
+// YooKassa webhook receiver — Fastify 5 + TypeScript
+//
+// Pattern: IP allowlist → schema-parse body → RE-FETCH payment via API → act on authoritative state.
+//
+// Env:
+//   YOOKASSA_SHOP_ID
+//   YOOKASSA_SECRET_KEY
+
+import Fastify from 'fastify';
+import { YooCheckout } from '@a2seven/yoo-checkout';
+import { z } from 'zod';
+import ipaddr from 'ipaddr.js';
+
+const env = z.object({
+  YOOKASSA_SHOP_ID: z.string().regex(/^\d+$/),
+  YOOKASSA_SECRET_KEY: z.string().regex(/^(live|test)_/),
+  PORT: z.coerce.number().default(3000),
+}).parse(process.env);
+
+const checkout = new YooCheckout({
+  shopId: env.YOOKASSA_SHOP_ID,
+  secretKey: env.YOOKASSA_SECRET_KEY,
+});
+
+// IP ranges from YooKassa dashboard — verify current list before deploy
+const YOOKASSA_IP_RANGES: string[] = [
+  '185.71.76.0/27',
+  '185.71.77.0/27',
+  '77.75.153.0/25',
+  '77.75.156.11',
+  '77.75.156.35',
+  '77.75.154.128/25',
+  '2a02:5180::/32',
+];
+
+function isYookassaIp(ip: string): boolean {
+  try {
+    const parsed = ipaddr.parse(ip);
+    return YOOKASSA_IP_RANGES.some((range) => {
+      if (!range.includes('/')) return parsed.toString() === ipaddr.parse(range).toString();
+      return parsed.match(ipaddr.parseCIDR(range as `${string}/${number}`));
+    });
+  } catch {
+    return false;
+  }
+}
+
+const WebhookSchema = z.object({
+  type: z.literal('notification'),
+  event: z.enum([
+    'payment.waiting_for_capture',
+    'payment.succeeded',
+    'payment.canceled',
+    'refund.succeeded',
+  ]),
+  object: z.object({
+    id: z.string().uuid(),
+  }).passthrough(),
+});
+
+const app = Fastify({ logger: true, trustProxy: true });
+
+app.post('/webhooks/yookassa', async (req, reply) => {
+  // 1. IP allowlist
+  if (!isYookassaIp(req.ip)) {
+    req.log.warn({ ip: req.ip }, 'rejected non-YooKassa IP');
+    return reply.status(403).send({ error: 'forbidden' });
+  }
+
+  // 2. Validate webhook shape
+  const parsed = WebhookSchema.safeParse(req.body);
+  if (!parsed.success) {
+    req.log.warn({ err: parsed.error }, 'invalid webhook body');
+    return reply.status(400).send({ error: 'bad request' });
+  }
+  const { event, object } = parsed.data;
+
+  // 3. Idempotency — dedup by event + object.id
+  // {{TODO}}: insert dedup row into webhookEvent table; return 200 OK if duplicate
+
+  try {
+    if (event === 'refund.succeeded') {
+      const refund = await checkout.getRefund(object.id);
+      // {{TODO}}: db.refund.update(...)
+      req.log.info({ refundId: refund.id }, 'refund processed');
+    } else {
+      // 4. Re-fetch authoritative payment state
+      const payment = await checkout.getPayment(object.id);
+      req.log.info({ paymentId: payment.id, status: payment.status, event }, 'payment state');
+
+      switch (event) {
+        case 'payment.succeeded':
+          // {{TODO}}: idempotent order paid, capture saved_method, queue fulfillment
+          break;
+        case 'payment.canceled':
+          // {{TODO}}: mark order payment_failed; log payment.cancellation_details.reason
+          break;
+        case 'payment.waiting_for_capture':
+          // {{TODO}}: optionally auto-capture, or wait until fulfillment trigger
+          break;
+      }
+    }
+  } catch (err) {
+    req.log.error({ err }, 'webhook processing failed');
+    return reply.status(500).send({ error: 'internal' });
+  }
+
+  return reply.status(200).send({ ok: true });
+});
+
+app.listen({ port: env.PORT, host: '0.0.0.0' }).catch((err) => {
+  app.log.error(err);
+  process.exit(1);
+});

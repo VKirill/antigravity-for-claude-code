@@ -1,0 +1,74 @@
+{
+  // TypeScript 6.0 — strict production tsconfig
+  // Copy to your project root as tsconfig.json, fill in {{placeholders}}
+  //
+  // TS 6.0 default-shifts kept EXPLICIT below for clarity:
+  //   strict: true, module: ESNext, target: ES2025, types: [] are 6.0 defaults
+  //   but we set them anyway so tooling that snapshots resolved config matches.
+  // For a monorepo package, also set:
+  //   "composite": true, "declaration": true, "declarationMap": true
+  // For a Vite/bundler project, change module/moduleResolution to "ESNext"/"bundler"
+  // For a Node.js app with type-stripping, set to "NodeNext"/"NodeNext"
+
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  "compilerOptions": {
+    // ── Target & Module ──────────────────────────────────────────────
+    // Choose based on runtime:
+    //   Node.js app:      "module": "NodeNext", "moduleResolution": "NodeNext"
+    //   Vite/bundler:     "module": "ESNext",   "moduleResolution": "bundler"
+    //   Browser (no bundle): "module": "ESNext", "moduleResolution": "bundler"
+    "target": "ES2025",
+    "module": "{{NodeNext|ESNext}}",
+    "moduleResolution": "{{NodeNext|bundler}}",
+    "types": [],   // TS 6.0 default — explicit so a missing `@types/node` is an actionable error, not a silent global pollution
+
+    // ── Output ───────────────────────────────────────────────────────
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,          // Emit .d.ts files
+    "declarationMap": true,       // Source maps for declarations (enables go-to-source)
+    "sourceMap": true,            // Source maps for debugging
+
+    // ── Type Checking — strict baseline ─────────────────────────────
+    "strict": true,               // Enables 8 flags (see skill references/tsconfig.md)
+
+    // Beyond strict — recommended for new projects:
+    "exactOptionalPropertyTypes": true,   // {a?: string} ≠ {a: string|undefined}
+    "noUncheckedIndexedAccess": true,     // arr[0] returns T|undefined
+    "noImplicitOverride": true,           // 'override' keyword required
+    "noFallthroughCasesInSwitch": true,   // Switch fall-through is an error
+
+    // Optional but useful:
+    "noUnusedLocals": true,               // Error on unused variables
+    "noUnusedParameters": true,           // Error on unused function params
+
+    // ── Module Behavior ──────────────────────────────────────────────
+    "verbatimModuleSyntax": true,   // Requires 'import type' for type-only imports
+    "isolatedModules": true,        // Required for esbuild, swc, Vite, type-stripping
+    "esModuleInterop": true,        // Interop for CJS/ESM default exports
+    "moduleDetection": "force",     // Treat all files as modules (not scripts)
+    "resolveJsonModule": true,      // Allow import of .json files
+
+    // ── Libraries ────────────────────────────────────────────────────
+    // Node.js app: use "ES2025" (no DOM)
+    // Browser app: use ["ES2025", "DOM", "DOM.Iterable"]
+    "lib": ["{{ES2025|ES2025,DOM,DOM.Iterable}}"],
+
+    // ── Performance ──────────────────────────────────────────────────
+    "skipLibCheck": true,           // Skip .d.ts checks in node_modules
+    "incremental": true,            // Incremental build cache
+    "tsBuildInfoFile": "./.tsbuildinfo",
+
+    // ── Path Mapping (optional) ───────────────────────────────────────
+    // Uncomment and fill if you use path aliases:
+    // "baseUrl": ".",
+    // "paths": {
+    //   "@app/*": ["src/*"],
+    //   "@shared/*": ["packages/shared/src/*"]
+    // }
+  },
+
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

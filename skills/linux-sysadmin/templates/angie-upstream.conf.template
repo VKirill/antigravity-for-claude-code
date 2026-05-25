@@ -1,0 +1,62 @@
+# Angie upstream with health checks, load balancing, and slow-start
+# Replace: UPSTREAM_NAME, SERVER1_ADDR, SERVER2_ADDR
+# Place in /etc/angie/http.d/ or include from site config
+# Test: angie -t && systemctl reload angie
+
+upstream UPSTREAM_NAME {
+    # Load balancing method (choose one)
+    # Default (round-robin) — no directive needed
+    # least_conn;          # send to server with fewest active connections
+    # ip_hash;             # sticky by client IP
+    # hash $request_uri;   # sticky by URI (good for caching tiers)
+
+    server SERVER1_ADDR:3000 weight=1;
+
+    # Angie slow-start: gradually increase traffic after recovery
+    # server SERVER2_ADDR:3000 weight=1 slow_start=30s;
+
+    # Keepalive pool (reuse connections to backend)
+    keepalive 32;
+    keepalive_requests 1000;
+    keepalive_timeout 75s;
+
+    # Angie session binding (sticky sessions)
+    # sticky cookie srv_id expires=1h path=/;
+
+    # Zone required for active health checks (Angie feature)
+    # zone UPSTREAM_NAME 256k;
+}
+
+# Active health check (Angie-only — requires upstream zone)
+# match UPSTREAM_NAME_health {
+#     status 200-399;
+#     body ~ '"status":"ok"';  # optional body check
+# }
+
+server {
+    # ... your server block ...
+    location / {
+        proxy_pass http://UPSTREAM_NAME;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";    # enable keepalive
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Buffering — enable for slow backends to release upstream connections faster
+        proxy_buffering    on;
+        proxy_buffer_size  8k;
+        proxy_buffers      8 16k;
+
+        proxy_connect_timeout 5s;
+        proxy_read_timeout    60s;
+        proxy_send_timeout    60s;
+
+        # Retry on next upstream server on error/timeout
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+        proxy_next_upstream_tries 2;
+        proxy_next_upstream_timeout 10s;
+    }
+}

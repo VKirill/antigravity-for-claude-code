@@ -1,0 +1,76 @@
+-- Role setup for a typical SaaS:
+--   * app       — full DML (the application's connection user)
+--   * readonly  — for analytics / Metabase / Grafana
+--   * migrator  — DDL (CI / release pipeline)
+--
+-- Run as superuser (postgres) once per DB.
+
+\set app_password    `echo "$APP_DB_PASSWORD"`
+\set ro_password     `echo "$READONLY_DB_PASSWORD"`
+\set mig_password    `echo "$MIGRATOR_DB_PASSWORD"`
+
+-- =====================================================
+-- Create roles
+-- =====================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app') THEN
+    CREATE ROLE app LOGIN PASSWORD :'app_password';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly') THEN
+    CREATE ROLE readonly NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporter') THEN
+    CREATE ROLE reporter LOGIN PASSWORD :'ro_password';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'migrator') THEN
+    CREATE ROLE migrator LOGIN PASSWORD :'mig_password' CREATEROLE;
+  END IF;
+END$$;
+
+GRANT readonly TO reporter;
+
+-- =====================================================
+-- Per-role limits
+-- =====================================================
+ALTER ROLE app
+  SET statement_timeout                   = '10s'
+  SET idle_in_transaction_session_timeout = '60s'
+  SET lock_timeout                        = '2s'
+  CONNECTION LIMIT                          200;
+
+ALTER ROLE reporter
+  SET statement_timeout                   = '60s'
+  SET work_mem                            = '256MB'
+  CONNECTION LIMIT                          20;
+
+ALTER ROLE migrator
+  SET statement_timeout                   = '300s';
+
+-- =====================================================
+-- Privileges
+-- =====================================================
+GRANT CONNECT ON DATABASE current_database() TO app, readonly;
+
+GRANT USAGE ON SCHEMA public TO app, readonly;
+
+-- App: full DML
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES    IN SCHEMA public TO app;
+GRANT USAGE, SELECT, UPDATE          ON ALL SEQUENCES IN SCHEMA public TO app;
+GRANT EXECUTE                        ON ALL FUNCTIONS IN SCHEMA public TO app;
+
+-- Readonly: SELECT only
+GRANT SELECT                         ON ALL TABLES    IN SCHEMA public TO readonly;
+GRANT USAGE, SELECT                  ON ALL SEQUENCES IN SCHEMA public TO readonly;
+
+-- Default privileges for future objects created by the migrator
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA public
+  GRANT SELECT                          ON TABLES TO readonly;
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA public
+  GRANT USAGE, SELECT, UPDATE           ON SEQUENCES TO app;
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA public
+  GRANT USAGE, SELECT                   ON SEQUENCES TO readonly;
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA public
+  GRANT EXECUTE                         ON FUNCTIONS TO app;

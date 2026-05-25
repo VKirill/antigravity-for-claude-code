@@ -1,0 +1,71 @@
+/**
+ * {{ComponentName}} — React 19 typed component template
+ *
+ * Replace all {{placeholder}} values before use.
+ * Patterns used:
+ *  - ref as prop (no forwardRef)
+ *  - TypeScript strict props
+ *  - React.ComponentProps spreading for native element props
+ */
+
+import { type Ref } from 'react';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface {{ComponentName}}Props
+  extends React.HTMLAttributes<HTML{{ElementType}}Element> {
+  /** Forwarded ref — React 19: ref as a regular prop, no forwardRef needed */
+  ref?: Ref<HTML{{ElementType}}Element>;
+
+  // TODO: add domain-specific props
+  // label: string;
+  // variant?: '{{variant1}}' | '{{variant2}}';
+  // size?: 'sm' | 'md' | 'lg';
+  // disabled?: boolean;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export function {{ComponentName}}({
+  ref,
+  className,
+  children,
+  // TODO: destructure domain props
+  // label,
+  // variant = '{{variant1}}',
+  // size = 'md',
+  ...props
+}: {{ComponentName}}Props) {
+  return (
+    <{{element}}
+      ref={ref}
+      className={className}
+      {...props}
+    >
+      {children}
+    </{{element}}>
+  );
+}
+
+{{ComponentName}}.displayName = '{{ComponentName}}';
+
+// ─── Variants (if applicable) ─────────────────────────────────────────────────
+// Export named sub-components for compound pattern:
+//
+// {{ComponentName}}.Header = {{ComponentName}}Header;
+// {{ComponentName}}.Body = {{ComponentName}}Body;
+// {{ComponentName}}.Footer = {{ComponentName}}Footer;
+
+// ─── Usage example ───────────────────────────────────────────────────────────
+//
+// import { useRef } from 'react';
+// import { {{ComponentName}} } from './{{ComponentName}}';
+//
+// function Example() {
+//   const ref = useRef<HTML{{ElementType}}Element>(null);
+//   return (
+//     <{{ComponentName}} ref={ref}>
+//       content
+//     </{{ComponentName}}>
+//   );
+// }

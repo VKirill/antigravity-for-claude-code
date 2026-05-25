@@ -1,0 +1,154 @@
+// CloudPayments webhook receiver — Fastify 5 + TypeScript
+//
+// Routes:
+//   POST /webhooks/cp/check    — gate before charge
+//   POST /webhooks/cp/pay      — money received
+//   POST /webhooks/cp/fail     — bank decline
+//   POST /webhooks/cp/refund   — refund executed
+//   POST /webhooks/cp/recurrent — subscription state change
+//
+// Env required:
+//   CP_API_SECRET — used for HMAC-SHA256 verification
+
+import Fastify from 'fastify';
+import crypto from 'node:crypto';
+import { z } from 'zod';
+
+const env = z.object({
+  CP_API_SECRET: z.string().min(20),
+  PORT: z.coerce.number().default(3000),
+}).parse(process.env);
+
+const app = Fastify({ logger: true });
+
+// 1. Capture raw body — required for HMAC verification
+app.addContentTypeParser(
+  ['application/json', 'application/x-www-form-urlencoded'],
+  { parseAs: 'buffer' },
+  (_req, body, done) => done(null, body),
+);
+
+function verifyHmac(rawBody: Buffer, headerHmac: string | undefined): boolean {
+  if (!headerHmac) return false;
+  const expected = crypto
+    .createHmac('sha256', env.CP_API_SECRET)
+    .update(rawBody)
+    .digest('base64');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(headerHmac);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function parsePayload<T>(rawBody: Buffer, schema: z.ZodType<T>): T {
+  // CloudPayments may send JSON or x-www-form-urlencoded based on dashboard
+  const text = rawBody.toString('utf8');
+  let obj: unknown;
+  if (text.trim().startsWith('{')) {
+    obj = JSON.parse(text);
+  } else {
+    obj = Object.fromEntries(new URLSearchParams(text));
+  }
+  return schema.parse(obj);
+}
+
+const PayPayload = z.object({
+  TransactionId: z.coerce.number().int().positive(),
+  Amount: z.coerce.number().positive(),
+  Currency: z.literal('RUB'),
+  InvoiceId: z.string().min(1),
+  AccountId: z.string().optional(),
+  Email: z.string().optional(),
+  Status: z.enum(['Completed', 'Authorized']),
+  Token: z.string().optional(),
+  CardLastFour: z.string().length(4).optional(),
+  TestMode: z.coerce.number(),
+});
+type PayPayload = z.infer<typeof PayPayload>;
+
+const CheckPayload = PayPayload.partial({ Status: true, Token: true });
+
+// ── Check gate ────────────────────────────────────────────────
+app.post('/webhooks/cp/check', async (req, reply) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.headers['content-hmac'] as string | undefined)) {
+    return reply.status(401).send({ code: 13 });
+  }
+
+  const parsed = CheckPayload.safeParse(
+    rawBody.toString().startsWith('{')
+      ? JSON.parse(rawBody.toString())
+      : Object.fromEntries(new URLSearchParams(rawBody.toString())),
+  );
+  if (!parsed.success) return reply.status(200).send({ code: 13 });
+  const p = parsed.data;
+
+  // {{TODO}}: lookup order by p.InvoiceId, verify amount/currency, return matching code
+  // const order = await db.order.findUnique({ where: { id: p.InvoiceId } });
+  // if (!order) return reply.send({ code: 10 });
+  // if (order.status !== 'pending_payment') return reply.send({ code: 13 });
+  // if (Number(order.amount) !== Number(p.Amount)) return reply.send({ code: 12 });
+
+  return reply.status(200).send({ code: 0 });
+});
+
+// ── Pay — money received ──────────────────────────────────────
+app.post('/webhooks/cp/pay', async (req, reply) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.headers['content-hmac'] as string | undefined)) {
+    return reply.status(401).send({ code: 13 });
+  }
+
+  let p: PayPayload;
+  try {
+    p = parsePayload(rawBody, PayPayload);
+  } catch (err) {
+    req.log.warn({ err }, 'invalid Pay payload');
+    return reply.status(200).send({ code: 0 }); // ack to stop retries; alert ops separately
+  }
+
+  // {{TODO}}: idempotent order update, queue side effects
+  // await db.$transaction([
+  //   db.order.update({ where: { id: p.InvoiceId }, data: { status: 'paid', cpTxId: p.TransactionId } }),
+  //   db.paymentEvent.create({ data: { type: 'pay', payload: p } }),
+  // ]);
+  // await queue.add('order.fulfill', { orderId: p.InvoiceId });
+
+  req.log.info({ TransactionId: p.TransactionId, InvoiceId: p.InvoiceId }, 'pay received');
+  return reply.status(200).send({ code: 0 });
+});
+
+// ── Fail ──────────────────────────────────────────────────────
+app.post('/webhooks/cp/fail', async (req, reply) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.headers['content-hmac'] as string | undefined)) {
+    return reply.status(401).send({ code: 13 });
+  }
+  // {{TODO}}: mark order failed; log Reason/ReasonCode
+  return reply.status(200).send({ code: 0 });
+});
+
+// ── Refund ────────────────────────────────────────────────────
+app.post('/webhooks/cp/refund', async (req, reply) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.headers['content-hmac'] as string | undefined)) {
+    return reply.status(401).send({ code: 13 });
+  }
+  // {{TODO}}: mark order refunded; revoke access; cancel related subscription
+  return reply.status(200).send({ code: 0 });
+});
+
+// ── Recurrent ─────────────────────────────────────────────────
+app.post('/webhooks/cp/recurrent', async (req, reply) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.headers['content-hmac'] as string | undefined)) {
+    return reply.status(401).send({ code: 13 });
+  }
+  // {{TODO}}: handle Active/PastDue/Cancelled state transitions
+  return reply.status(200).send({ code: 0 });
+});
+
+app.listen({ port: env.PORT, host: '0.0.0.0' }).catch((err) => {
+  app.log.error(err);
+  process.exit(1);
+});

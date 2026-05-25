@@ -1,0 +1,50 @@
+// Minimal runtime-agnostic Hono 4 app.
+// Wire your runtime adapter at the entry file (see cloudflare-workers.ts, vercel-edge.ts).
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
+import { HTTPException } from 'hono/http-exception';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+
+type Bindings = { DATABASE_URL: string };
+type Variables = { reqId: string };
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+app.use('*', logger());
+app.use('*', secureHeaders());
+app.use('/api/*', cors({
+  origin: (origin) => (origin?.endsWith('.example.com') ? origin : null),
+  credentials: true,
+}));
+
+app.use('*', async (c, next) => {
+  c.set('reqId', crypto.randomUUID());
+  await next();
+  c.res.headers.set('x-request-id', c.get('reqId'));
+});
+
+// Routes — chain for RPC type inference
+const routes = app
+  .get('/health', (c) => c.json({ status: 'ok', uptime: Date.now() }))
+  .get('/users/:id', (c) => c.json({ id: c.req.param('id'), email: 'x@y.z' }))
+  .post('/users',
+    zValidator('json', z.object({ email: z.string().email(), name: z.string().min(1) })),
+    (c) => {
+      const body = c.req.valid('json');
+      return c.json({ id: crypto.randomUUID(), ...body }, 201);
+    });
+
+app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404));
+
+app.onError((err, c) => {
+  console.error(err);
+  if (err instanceof HTTPException) return err.getResponse();
+  return c.json({ error: 'internal_error', requestId: c.get('reqId') }, 500);
+});
+
+export type AppType = typeof routes;
+export default app;

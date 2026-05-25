@@ -1,0 +1,46 @@
+#!/bin/bash
+# UFW baseline firewall setup
+# Run as root. Review BEFORE running — wrong SSH port = lockout.
+# Replace SSH_PORT (default 2222) if different.
+
+set -euo pipefail
+
+SSH_PORT="${1:-2222}"
+
+echo "Setting up UFW baseline (SSH on port ${SSH_PORT})"
+echo "Verify this matches your actual SSH port BEFORE proceeding."
+read -rp "Continue? [y/N] " confirm
+[[ "${confirm}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+
+# Reset to clean state (removes all rules)
+ufw --force reset
+
+# Default policies
+ufw default deny incoming
+ufw default allow outgoing
+ufw default deny routed
+
+# SSH (rate-limited: 6 attempts per 30 seconds per source IP)
+ufw limit "${SSH_PORT}/tcp" comment "SSH"
+
+# Web
+ufw allow 80/tcp  comment "HTTP"
+ufw allow 443/tcp comment "HTTPS"
+
+# Uncomment for HTTP/3 (QUIC)
+# ufw allow 443/udp comment "HTTP/3 QUIC"
+
+# Loopback (always allow — required for local services)
+# UFW handles this automatically
+
+# Enable UFW (non-interactive — no confirmation prompt)
+ufw --force enable
+
+# Show result
+ufw status verbose
+
+echo ""
+echo "UFW enabled. Open ports: ${SSH_PORT}/tcp, 80/tcp, 443/tcp"
+echo "To add a rule:   ufw allow PORT/tcp"
+echo "To see rules:    ufw status numbered"
+echo "To delete:       ufw delete RULE_NUMBER"

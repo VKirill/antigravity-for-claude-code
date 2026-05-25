@@ -1,0 +1,187 @@
+/**
+ * Pino base config — drop into src/lib/logger.ts (adjust import paths).
+ * Pairs with src/lib/context.ts (AsyncLocalStorage); template below.
+ *
+ * Sets up:
+ *  - Structured JSON in prod, pretty console in dev
+ *  - LOG_LEVEL env override (defaults: info in prod, debug in dev)
+ *  - Auto-injects request_id, user_id from AsyncLocalStorage context
+ *  - Redacts common sensitive fields
+ *  - service / env / version base context
+ *  - ISO timestamps, lowercase level labels
+ */
+
+// ============================================================
+// src/lib/logger.ts
+// ============================================================
+
+import pino from 'pino';
+import { requestContext } from './context.js';
+
+const isDev = process.env.NODE_ENV === 'development';
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info'),
+
+  // Auto-inject correlation IDs from AsyncLocalStorage on every log
+  mixin() {
+    const ctx = requestContext.getStore();
+    if (!ctx) return {};
+    return {
+      request_id: ctx.request_id,
+      user_id: ctx.user_id,
+      tenant_id: ctx.tenant_id,
+      trace_id: ctx.trace_id,
+    };
+  },
+
+  // Redact sensitive fields by path (Pino's built-in)
+  redact: {
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'req.headers["x-api-key"]',
+      'req.headers["x-auth-token"]',
+      'res.headers["set-cookie"]',
+
+      // Common body / payload fields
+      '*.password',
+      '*.passwordHash',
+      '*.password_hash',
+      '*.token',
+      '*.accessToken',
+      '*.access_token',
+      '*.refreshToken',
+      '*.refresh_token',
+      '*.apiKey',
+      '*.api_key',
+      '*.secret',
+      '*.privateKey',
+      '*.private_key',
+
+      // Payment
+      '*.creditCard',
+      '*.credit_card',
+      '*.cardNumber',
+      '*.card_number',
+      '*.cvv',
+      '*.cvc',
+      '*.pan',
+
+      // Identity (PII — turn on per project policy)
+      // '*.ssn',
+      // '*.passport',
+      // '*.dob',
+
+      // Generic envelopes
+      'authorization',
+      'cookie',
+    ],
+    censor: '[REDACTED]',
+  },
+
+  // Pretty in dev, structured JSON to stdout in prod
+  transport: isDev
+    ? {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'HH:MM:ss.l',
+          ignore: 'pid,hostname',
+        },
+      }
+    : undefined,
+
+  // Base context attached to every log
+  base: {
+    service: process.env.SERVICE_NAME ?? 'unknown',
+    env: process.env.NODE_ENV ?? 'development',
+    version: process.env.SERVICE_VERSION,
+  },
+
+  timestamp: pino.stdTimeFunctions.isoTime,
+
+  // Use string level labels, not numbers
+  formatters: {
+    level(label) {
+      return { level: label };
+    },
+  },
+
+  // Standard error serializer — turns Error into { type, message, stack, code }
+  serializers: {
+    err: pino.stdSerializers.err,
+    error: pino.stdSerializers.err,
+    req: pino.stdSerializers.req,
+    res: pino.stdSerializers.res,
+  },
+});
+
+// ============================================================
+// src/lib/context.ts — AsyncLocalStorage for request scope
+// ============================================================
+
+/**
+ * import { AsyncLocalStorage } from 'node:async_hooks';
+ * import { randomUUID } from 'node:crypto';
+ *
+ * export type RequestContext = {
+ *   request_id: string;
+ *   user_id?: string;
+ *   tenant_id?: string;
+ *   trace_id?: string;
+ * };
+ *
+ * export const requestContext = new AsyncLocalStorage<RequestContext>();
+ *
+ * // Express / Fastify middleware
+ * export function withRequestContext(req: any, res: any, next: any) {
+ *   const request_id = (req.headers['x-request-id'] as string) ?? randomUUID();
+ *   res.setHeader('x-request-id', request_id);
+ *
+ *   const ctx: RequestContext = { request_id };
+ *
+ *   // If you have auth, populate user/tenant here:
+ *   // if (req.user) { ctx.user_id = req.user.id; ctx.tenant_id = req.user.tenantId; }
+ *
+ *   requestContext.run(ctx, () => next());
+ * }
+ *
+ * // Helper for accessing in tests / non-middleware code
+ * export function getRequestId(): string | undefined {
+ *   return requestContext.getStore()?.request_id;
+ * }
+ *
+ * export function setUser(user_id: string, tenant_id?: string) {
+ *   const ctx = requestContext.getStore();
+ *   if (ctx) {
+ *     ctx.user_id = user_id;
+ *     if (tenant_id) ctx.tenant_id = tenant_id;
+ *   }
+ * }
+ */
+
+// ============================================================
+// Usage
+// ============================================================
+
+/**
+ * import { logger } from './logger.js';
+ *
+ * // In a request handler:
+ * logger.info({ msg: 'user.fetched', user_id: id });
+ *
+ * // Logs include request_id automatically from AsyncLocalStorage.
+ *
+ * // Child logger with extra scoped context:
+ * const log = logger.child({ component: 'auth' });
+ * log.info({ msg: 'login.attempted' });
+ *
+ * // Error:
+ * try {
+ *   await doThing();
+ * } catch (err) {
+ *   logger.error({ err, msg: 'thing.failed' });   // serializer extracts stack
+ *   throw err;
+ * }
+ */

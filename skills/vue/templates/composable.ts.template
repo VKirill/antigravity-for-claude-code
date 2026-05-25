@@ -1,0 +1,104 @@
+/**
+ * use{{NAME}} — {{ONE_LINE_DESCRIPTION}}
+ *
+ * @param {{PARAM_NAME}} - {{PARAM_DESCRIPTION}} (accepts ref, getter, or plain value)
+ * @returns {{RETURN_DESCRIPTION}}
+ *
+ * Usage:
+ *   const { {{RETURN_KEY_1}}, {{RETURN_KEY_2}} } = use{{NAME}}({{EXAMPLE_INPUT}})
+ */
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  readonly,
+  toValue,
+  type MaybeRefOrGetter,
+  type Ref,
+} from 'vue'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface {{NAME}}Options {
+  // {{OPTION_KEY}}: {{OPTION_TYPE}}
+  // Add configuration options here — keep optional with defaults
+}
+
+export interface {{NAME}}Return {
+  /** {{STATE_DESCRIPTION}} */
+  {{STATE_KEY}}: Readonly<Ref<{{STATE_TYPE}}>>
+  /** {{COMPUTED_DESCRIPTION}} */
+  {{COMPUTED_KEY}}: Readonly<Ref<{{COMPUTED_TYPE}}>>
+  /** {{ACTION_DESCRIPTION}} */
+  {{ACTION_KEY}}: ({{ACTION_PARAMS}}) => void
+}
+
+// ── Implementation ────────────────────────────────────────────────────────────
+
+export function use{{NAME}}(
+  input: MaybeRefOrGetter<{{INPUT_TYPE}}>,
+  options: {{NAME}}Options = {}
+): {{NAME}}Return {
+  // ── State ────────────────────────────────────────────────────────────────
+  const {{STATE_KEY}} = ref<{{STATE_TYPE}}>({{STATE_INITIAL_VALUE}})
+  const loading = ref(false)
+  const error = ref<Error | null>(null)
+
+  // ── Computed ─────────────────────────────────────────────────────────────
+  const {{COMPUTED_KEY}} = computed(() => {
+    const value = toValue(input)
+    // derive from value and state
+    return {{COMPUTED_EXPRESSION}}
+  })
+
+  // ── Watch input changes ───────────────────────────────────────────────────
+  watch(
+    () => toValue(input),
+    async (newValue, _oldValue, onCleanup) => {
+      // Cancel previous async operation if input changes
+      const controller = new AbortController()
+      onCleanup(() => controller.abort())
+
+      loading.value = true
+      error.value = null
+
+      try {
+        // {{FETCH_OR_SIDE_EFFECT_LOGIC}}
+        {{STATE_KEY}}.value = await {{ASYNC_OPERATION}}(newValue, controller.signal)
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          error.value = e as Error
+        }
+      } finally {
+        loading.value = false
+      }
+    },
+    { immediate: true }
+  )
+
+  // ── Side effects with cleanup ─────────────────────────────────────────────
+  onMounted(() => {
+    // {{MOUNT_SETUP}} e.g., add event listeners
+  })
+
+  onUnmounted(() => {
+    // {{CLEANUP}} e.g., remove event listeners
+    // Alternative: use onWatcherCleanup inside watch callbacks
+  })
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  function {{ACTION_KEY}}({{ACTION_PARAMS}}): void {
+    // {{ACTION_IMPLEMENTATION}}
+  }
+
+  // ── Return ────────────────────────────────────────────────────────────────
+  return {
+    {{STATE_KEY}}: readonly({{STATE_KEY}}),
+    {{COMPUTED_KEY}},
+    loading: readonly(loading),
+    error: readonly(error),
+    {{ACTION_KEY}},
+  }
+}

@@ -1,0 +1,113 @@
+/**
+ * playwright.config.ts — production preset
+ *
+ * Placeholders (replace before use):
+ *   {{BASE_URL}}        — app URL, e.g. http://localhost:3000
+ *   {{TEST_DIR}}        — test directory, e.g. ./tests/e2e
+ *   {{SHARD_COUNT}}     — CI shard count, e.g. 4
+ *   {{AUTH_FILE}}       — storageState path, e.g. playwright/.auth/user.json
+ */
+
+import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+
+const authFile = path.join(__dirname, '{{AUTH_FILE}}');
+
+export default defineConfig({
+  testDir: '{{TEST_DIR}}',
+
+  /* Run tests in files in parallel */
+  fullyParallel: true,
+
+  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  forbidOnly: !!process.env.CI,
+
+  /* Retry on CI only */
+  retries: process.env.CI ? 2 : 0,
+
+  /* Opt out of parallel tests on CI — sharding provides parallelism */
+  workers: process.env.CI ? 1 : undefined,
+
+  /* Reporter */
+  reporter: process.env.CI
+    ? [['blob'], ['line']]       // blob for shard merge, line for live output
+    : [['html', { open: 'on-failure' }], ['list']],
+
+  /* Shared settings for all projects */
+  use: {
+    baseURL: process.env.BASE_URL ?? '{{BASE_URL}}',
+
+    /* Collect trace on first retry */
+    trace: 'on-first-retry',
+
+    /* Screenshot on failure */
+    screenshot: 'only-on-failure',
+
+    /* Video on failure */
+    video: 'retain-on-failure',
+  },
+
+  /* Configure projects for major browsers */
+  projects: [
+    /* Setup project — runs auth before other projects */
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+    },
+
+    /* Authenticated tests */
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: authFile,
+      },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'firefox',
+      use: {
+        ...devices['Desktop Firefox'],
+        storageState: authFile,
+      },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'webkit',
+      use: {
+        ...devices['Desktop Safari'],
+        storageState: authFile,
+      },
+      dependencies: ['setup'],
+    },
+
+    /* Mobile viewports */
+    {
+      name: 'mobile-chrome',
+      use: {
+        ...devices['Pixel 7'],
+        storageState: authFile,
+      },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'mobile-safari',
+      use: {
+        ...devices['iPhone 14'],
+        storageState: authFile,
+      },
+      dependencies: ['setup'],
+    },
+  ],
+
+  /*
+   * Web server auto-start (remove if using a pre-running server).
+   * Comment out if BASE_URL points to a deployed environment.
+   */
+  // webServer: {
+  //   command: 'npm run dev',
+  //   url: '{{BASE_URL}}',
+  //   reuseExistingServer: !process.env.CI,
+  //   timeout: 120_000,
+  // },
+});

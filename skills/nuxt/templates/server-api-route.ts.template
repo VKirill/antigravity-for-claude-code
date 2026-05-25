@@ -1,0 +1,52 @@
+// server/api/{{resource}}/[id].{{method}}.ts
+// Replace {{resource}}, {{method}}, and schema/types
+// Docs: https://nuxt.com/docs/guide/directory-structure/server
+
+import { z } from 'zod'
+
+// ── Request validation schema ─────────────────────────────────────────────────
+const {{Resource}}Schema = z.object({
+  name: z.string().min(1).max(200),
+  // Add fields here
+})
+
+type {{Resource}}Input = z.infer<typeof {{Resource}}Schema>
+
+// ── Handler ────────────────────────────────────────────────────────────────────
+export default defineEventHandler(async (event) => {
+  // URL param — matches [id] in filename
+  const id = getRouterParam(event, 'id')
+  if (!id) {
+    throw createError({ statusCode: 400, message: 'Missing id parameter' })
+  }
+
+  // Auth check (if you have server middleware setting event.context.user)
+  // const user = event.context.user
+  // if (!user) throw createError({ statusCode: 401, message: 'Unauthorized' })
+
+  // Body parsing + validation (for POST/PUT/PATCH)
+  const rawBody = await readBody(event)
+  const parsed = {{Resource}}Schema.safeParse(rawBody)
+  if (!parsed.success) {
+    throw createError({
+      statusCode: 422,
+      message: 'Validation failed',
+      data: parsed.error.flatten(),
+    })
+  }
+
+  const input: {{Resource}}Input = parsed.data
+
+  // ── Business logic ───────────────────────────────────────────────────────────
+  // Replace with your actual data access:
+  // const result = await db.{{resource}}.update({ where: { id }, data: input })
+
+  // Set 200 (default) or override:
+  // setResponseStatus(event, 201)
+
+  return {
+    id,
+    ...input,
+    updatedAt: new Date().toISOString(),
+  }
+})

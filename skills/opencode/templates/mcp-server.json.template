@@ -1,0 +1,18 @@
+{
+  "mcp": {
+    "{{local_server_name}}": {
+      "type": "local",
+      "command": ["{{executable}}", "{{arg1}}", "{{arg2}}"],
+      "env": {
+        "{{ENV_KEY}}": "{env:{{ENV_KEY}}}"
+      }
+    },
+    "{{remote_server_name}}": {
+      "type": "remote",
+      "url": "https://{{host}}/sse",
+      "headers": {
+        "Authorization": "Bearer {env:{{MCP_AUTH_TOKEN}}}"
+      }
+    }
+  }
+}

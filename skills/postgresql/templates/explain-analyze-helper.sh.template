@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# explain-analyze.sh — run EXPLAIN (ANALYZE, BUFFERS, VERBOSE) on a query file,
+# saving the plan with auto_explain-style timing for review.
+#
+# Usage:
+#   DATABASE_URL=postgres://... ./explain-analyze.sh ./query.sql
+#   DATABASE_URL=postgres://... ./explain-analyze.sh ./query.sql --format=json
+
+set -euo pipefail
+
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  echo "ERROR: DATABASE_URL not set" >&2
+  exit 1
+fi
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <query.sql> [--format=text|json|yaml|xml]" >&2
+  exit 1
+fi
+
+QUERY_FILE="$1"
+FORMAT="${2:-}"
+FORMAT_OPT="TEXT"
+
+if [[ "$FORMAT" == "--format=json" ]]; then FORMAT_OPT="JSON"; fi
+if [[ "$FORMAT" == "--format=yaml" ]]; then FORMAT_OPT="YAML"; fi
+if [[ "$FORMAT" == "--format=xml"  ]]; then FORMAT_OPT="XML";  fi
+
+if [[ ! -f "$QUERY_FILE" ]]; then
+  echo "ERROR: $QUERY_FILE not found" >&2
+  exit 1
+fi
+
+QUERY=$(<"$QUERY_FILE")
+
+# Wrap query in EXPLAIN
+EXPLAIN_SQL="EXPLAIN (ANALYZE, BUFFERS, VERBOSE, SETTINGS, WAL, FORMAT $FORMAT_OPT) $QUERY"
+
+echo "=== Query ==="
+echo "$QUERY"
+echo
+echo "=== Plan ==="
+psql "$DATABASE_URL" -At -c "$EXPLAIN_SQL"
+echo
+echo "=== Settings snapshot ==="
+psql "$DATABASE_URL" -At -c "SHOW work_mem;"
+psql "$DATABASE_URL" -At -c "SHOW shared_buffers;"
+psql "$DATABASE_URL" -At -c "SHOW random_page_cost;"
+psql "$DATABASE_URL" -At -c "SHOW effective_cache_size;"
+
+# Tips:
+# - Look for "Seq Scan" on big tables — missing index
+# - "Rows Removed by Filter" ≫ 0 — predicate not pushed to index
+# - "Sort Method: external merge Disk:" — raise work_mem
+# - "Buffers: shared hit=X read=Y" — high `read` = cold cache; rerun to see steady-state
+# - Save the JSON output and visualize on https://explain.dalibo.com or https://explain.depesz.com

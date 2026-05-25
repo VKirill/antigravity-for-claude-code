@@ -1,0 +1,59 @@
+// templates/route-handler.ts — Next.js 16 Route Handler template
+// Placeholders: {{RESOURCE_NAME}}, {{PARAM_NAME}}
+// Place at: app/api/{{RESOURCE_NAME}}/[{{PARAM_NAME}}]/route.ts
+
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { revalidateTag } from 'next/cache'
+import { get{{RESOURCE_NAME}}, update{{RESOURCE_NAME}}, delete{{RESOURCE_NAME}} } from '@/lib/data'
+
+type Params = { params: Promise<{ {{PARAM_NAME}}: string }> }
+
+// ── GET /api/{{RESOURCE_NAME}}/[{{PARAM_NAME}}] ──────────────────────────────
+export async function GET(req: Request, { params }: Params) {
+  try {
+    const { {{PARAM_NAME}} } = await params
+    const item = await get{{RESOURCE_NAME}}({{PARAM_NAME}})
+    if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json(item)
+  } catch (err) {
+    console.error('GET /{{RESOURCE_NAME}} error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// ── PATCH /api/{{RESOURCE_NAME}}/[{{PARAM_NAME}}] ────────────────────────────
+const PatchSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  // add fields as needed
+})
+
+export async function PATCH(req: Request, { params }: Params) {
+  try {
+    const { {{PARAM_NAME}} } = await params
+    const body = await req.json()
+    const parsed = PatchSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+    }
+    const updated = await update{{RESOURCE_NAME}}({{PARAM_NAME}}, parsed.data)
+    revalidateTag(`{{RESOURCE_NAME}}-${{{PARAM_NAME}}}`)
+    return NextResponse.json(updated)
+  } catch (err) {
+    console.error('PATCH /{{RESOURCE_NAME}} error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// ── DELETE /api/{{RESOURCE_NAME}}/[{{PARAM_NAME}}] ───────────────────────────
+export async function DELETE(req: Request, { params }: Params) {
+  try {
+    const { {{PARAM_NAME}} } = await params
+    await delete{{RESOURCE_NAME}}({{PARAM_NAME}})
+    revalidateTag(`{{RESOURCE_NAME}}-${{{PARAM_NAME}}}`)
+    return new Response(null, { status: 204 })
+  } catch (err) {
+    console.error('DELETE /{{RESOURCE_NAME}} error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

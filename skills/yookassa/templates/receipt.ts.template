@@ -1,0 +1,107 @@
+// YooKassa — 54-ФЗ receipt builder.
+// Pass result as `receipt` in createPayment / capturePayment / createRefund.
+
+export type VatCode = 1 | 2 | 3 | 4 | 5 | 6;
+// 1 НДС не облагается | 2 0% | 3 10% | 4 20% | 5 10/110 | 6 20/120
+
+export type TaxSystemCode = 1 | 2 | 3 | 4 | 5 | 6;
+// 1 ОСН | 2 УСН доходы | 3 УСН доходы-расходы | 4 ЕНВД (deprecated) | 5 ЕСХН | 6 Патент
+
+export type PaymentSubject =
+  | 'commodity' | 'excise' | 'job' | 'service'
+  | 'gambling_bet' | 'gambling_prize'
+  | 'lottery' | 'lottery_prize'
+  | 'intellectual_activity' | 'payment'
+  | 'agent_commission' | 'composite' | 'another';
+
+export type PaymentMode =
+  | 'full_prepayment' | 'partial_prepayment'
+  | 'advance' | 'full_payment' | 'partial_payment'
+  | 'credit' | 'credit_payment';
+
+export type Measure =
+  | 'piece' | 'gram' | 'kilogram' | 'ton'
+  | 'centimeter' | 'decimeter' | 'meter'
+  | 'square_centimeter' | 'square_decimeter' | 'square_meter'
+  | 'milliliter' | 'liter' | 'cubic_meter'
+  | 'kilowatt_hour' | 'gigacalorie'
+  | 'day' | 'hour' | 'minute' | 'second'
+  | 'kilobyte' | 'megabyte' | 'gigabyte' | 'terabyte'
+  | 'another';
+
+export interface ReceiptItem {
+  description: string;            // ≤128 chars
+  quantity: number;
+  amount: number;                 // per-line total (price × quantity), in RUB
+  vatCode: VatCode;
+  paymentSubject?: PaymentSubject; // default 'service'
+  paymentMode?: PaymentMode;       // default 'full_payment'
+  measure?: Measure;
+}
+
+export interface BuildReceiptArgs {
+  items: ReceiptItem[];
+  customer: { email?: string; phone?: string; full_name?: string; inn?: string };
+  taxSystemCode?: TaxSystemCode;   // omit if merchant has single СНО configured
+}
+
+export function buildReceipt(args: BuildReceiptArgs) {
+  if (!args.customer.email && !args.customer.phone) {
+    throw new Error('YooKassa receipt requires customer.email or customer.phone (54-ФЗ)');
+  }
+  if (args.items.length === 0) {
+    throw new Error('receipt must have at least 1 item');
+  }
+
+  return {
+    customer: args.customer,
+    items: args.items.map((i) => ({
+      description: i.description.slice(0, 128),
+      quantity: i.quantity.toFixed(3),
+      amount: { value: i.amount.toFixed(2), currency: 'RUB' },
+      vat_code: i.vatCode,
+      payment_subject: i.paymentSubject ?? 'service',
+      payment_mode: i.paymentMode ?? 'full_payment',
+      ...(i.measure ? { measure: i.measure } : {}),
+    })),
+    ...(args.taxSystemCode ? { tax_system_code: args.taxSystemCode } : {}),
+  };
+}
+
+// Example: SaaS subscription
+//
+// const receipt = buildReceipt({
+//   items: [{
+//     description: 'Подписка Pro · май 2026',
+//     quantity: 1,
+//     amount: 1000,
+//     vatCode: 1,                 // НДС не облагается
+//     paymentSubject: 'service',
+//     paymentMode: 'full_payment',
+//   }],
+//   customer: { email: user.email },
+//   taxSystemCode: 2,             // УСН доходы
+// });
+//
+// Example: physical goods with delivery
+//
+// const receipt = buildReceipt({
+//   items: [
+//     {
+//       description: 'Книга',
+//       quantity: 1,
+//       amount: 800,
+//       vatCode: 3,                // 10%
+//       paymentSubject: 'commodity',
+//     },
+//     {
+//       description: 'Доставка',
+//       quantity: 1,
+//       amount: 200,
+//       vatCode: 4,                // 20%
+//       paymentSubject: 'service',
+//     },
+//   ],
+//   customer: { email: order.email },
+//   taxSystemCode: 1,             // ОСН
+// });

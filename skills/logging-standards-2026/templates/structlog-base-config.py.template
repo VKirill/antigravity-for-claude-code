@@ -1,0 +1,166 @@
+"""
+structlog base config — drop into app/lib/logger.py (adjust imports).
+Pairs with app/lib/context.py (contextvars); template at bottom.
+
+Sets up:
+  - Structured JSON in prod, pretty console in dev
+  - LOG_LEVEL env override (defaults: INFO in prod, DEBUG in dev)
+  - Auto-injects request_id, user_id from contextvars
+  - Redacts common sensitive fields by key name regex
+  - service / env base context
+  - ISO timestamps, lowercase level labels
+  - Traceback dict serialization for exceptions
+"""
+
+# ============================================================
+# app/lib/logger.py
+# ============================================================
+
+import logging
+import os
+import re
+import sys
+import structlog
+from .context import request_id_var, user_id_var, tenant_id_var
+
+is_dev = os.environ.get('APP_ENV', 'development') == 'development'
+log_level = os.environ.get('LOG_LEVEL', 'DEBUG' if is_dev else 'INFO').upper()
+
+# --- Correlation processor ---
+def add_correlation(logger, method_name, event_dict):
+    if rid := request_id_var.get():
+        event_dict['request_id'] = rid
+    if uid := user_id_var.get():
+        event_dict['user_id'] = uid
+    if tid := tenant_id_var.get():
+        event_dict['tenant_id'] = tid
+    return event_dict
+
+# --- Service/env base context ---
+def add_service(logger, method_name, event_dict):
+    event_dict['service'] = os.environ.get('SERVICE_NAME', 'unknown')
+    event_dict['env'] = os.environ.get('APP_ENV', 'development')
+    if v := os.environ.get('SERVICE_VERSION'):
+        event_dict['version'] = v
+    return event_dict
+
+# --- Redaction (key-based) ---
+SENSITIVE_KEY = re.compile(
+    r'(password|passwd|pwd|token|api[_-]?key|secret|authorization|cookie|'
+    r'credit[_-]?card|card[_-]?number|cvv|cvc|pan|private[_-]?key|access[_-]?token|'
+    r'refresh[_-]?token)',
+    re.IGNORECASE,
+)
+
+def redact_sensitive_keys(logger, method_name, event_dict):
+    def _scrub(obj):
+        if isinstance(obj, dict):
+            return {k: ('[REDACTED]' if SENSITIVE_KEY.search(k) else _scrub(v)) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_scrub(x) for x in obj]
+        return obj
+    return _scrub(event_dict)
+
+# --- Redaction (value-based, defence in depth) ---
+VALUE_PATTERNS = [
+    (re.compile(r'AKIA[0-9A-Z]{16}'), '[AWS_KEY]'),
+    (re.compile(r'sk-ant-[a-zA-Z0-9_-]{20,}'), '[ANTHROPIC_KEY]'),
+    (re.compile(r'sk-[a-zA-Z0-9_-]{20,}'), '[OPENAI_KEY]'),
+    (re.compile(r'AIza[0-9A-Za-z_-]{35}'), '[GOOGLE_KEY]'),
+    (re.compile(r'ghp_[a-zA-Z0-9]{36}'), '[GITHUB_PAT]'),
+    (re.compile(r'xox[baprs]-[a-zA-Z0-9-]+'), '[SLACK_TOKEN]'),
+    (re.compile(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'), '[JWT]'),
+]
+
+def redact_sensitive_values(logger, method_name, event_dict):
+    def _scrub_val(v):
+        if isinstance(v, str):
+            for pat, repl in VALUE_PATTERNS:
+                v = pat.sub(repl, v)
+            return v
+        if isinstance(v, dict):
+            return {k: _scrub_val(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [_scrub_val(x) for x in v]
+        return v
+    return _scrub_val(event_dict)
+
+# --- Configure structlog ---
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        add_correlation,
+        add_service,
+        redact_sensitive_keys,
+        redact_sensitive_values,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt='iso', utc=True),
+        structlog.processors.dict_tracebacks,  # for logger.exception(...)
+        structlog.processors.StackInfoRenderer(),
+        # Final renderer differs by env
+        structlog.dev.ConsoleRenderer() if is_dev and sys.stderr.isatty()
+            else structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, log_level)),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+# --- Quiet noisy stdlib loggers ---
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('asyncio').setLevel(logging.WARNING)
+logging.getLogger('boto3').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
+logging.getLogger('s3transfer').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+
+logger = structlog.get_logger()
+
+# ============================================================
+# app/lib/context.py — contextvars for request scope
+# ============================================================
+
+# import contextvars
+#
+# request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar('request_id', default='')
+# user_id_var:    contextvars.ContextVar[str] = contextvars.ContextVar('user_id', default='')
+# tenant_id_var:  contextvars.ContextVar[str] = contextvars.ContextVar('tenant_id', default='')
+
+# ============================================================
+# FastAPI middleware example
+# ============================================================
+
+# import uuid
+# from fastapi import FastAPI, Request
+# from .context import request_id_var, user_id_var
+# from .logger import logger
+#
+# app = FastAPI()
+#
+# @app.middleware('http')
+# async def correlation_middleware(request: Request, call_next):
+#     rid = request.headers.get('x-request-id') or str(uuid.uuid4())
+#     tok = request_id_var.set(rid)
+#     log = logger.bind(http_method=request.method, http_path=request.url.path)
+#     log.info('http.request')
+#     try:
+#         response = await call_next(request)
+#         response.headers['x-request-id'] = rid
+#         log.info('http.response', http_status=response.status_code)
+#         return response
+#     finally:
+#         request_id_var.reset(tok)
+
+# ============================================================
+# Usage
+# ============================================================
+
+# from .logger import logger
+#
+# logger.info('user.fetched', user_id=uid)
+#
+# try:
+#     process_order(...)
+# except Exception:
+#     logger.exception('order.failed', order_id=oid)

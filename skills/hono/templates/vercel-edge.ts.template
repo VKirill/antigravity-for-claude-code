@@ -1,0 +1,36 @@
+// Hono on Vercel Edge — file location: app/api/[[...route]]/route.ts (Next.js)
+// or api/[[...route]].ts (Vercel without Next.js).
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { handle } from 'hono/vercel';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+
+// Pick runtime. 'edge' = V8 isolates (faster cold start), 'nodejs' = full Node.
+export const runtime = 'edge';
+
+const app = new Hono().basePath('/api');
+
+app.use('*', cors({ origin: process.env.NEXT_PUBLIC_SITE_URL ?? '*' }));
+
+const routes = app
+  .get('/hello', (c) => c.json({ hi: 'edge' }))
+  .post('/echo',
+    zValidator('json', z.object({ message: z.string() })),
+    (c) => c.json({ echo: c.req.valid('json').message })
+  )
+  .get('/env', (c) => c.json({
+    region: (globalThis as { EdgeRuntime?: string }).EdgeRuntime ?? 'unknown',
+    timestamp: Date.now(),
+  }));
+
+export type AppType = typeof routes;
+
+// Next.js App Router exports — one per HTTP method
+export const GET = handle(app);
+export const POST = handle(app);
+export const PUT = handle(app);
+export const PATCH = handle(app);
+export const DELETE = handle(app);
+export const OPTIONS = handle(app);

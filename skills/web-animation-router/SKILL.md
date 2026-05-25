@@ -98,6 +98,7 @@ Full tree + scoring matrix + bundle costs: [references/animation-library-decisio
 | **AI-product UX motion** — thinking states, streaming token text, tool-use/confidence/regeneration | [references/ai-ux-motion-patterns.md](references/ai-ux-motion-patterns.md) |
 | **Motion accessibility** — correct reduced-motion fallbacks (not mute-all), vestibular thresholds, WCAG 2.2, focus mgmt | [references/motion-accessibility.md](references/motion-accessibility.md) |
 | **AutoAnimate** — framework adapters, config, limitations | [references/auto-animate.md](references/auto-animate.md) |
+| **Motion-spec format & handoff** — machine-readable `motion-spec.yaml`/motion.md template (per element: trigger/property/from-to/duration/easing/stagger/scroll-range), Rive vs Lottie vs code, spec-vs-build verification (folded in from the former standalone `motion-spec-handoff` skill) | [references/motion-spec-format.md](references/motion-spec-format.md) |
 
 ## Cross-cutting discipline
 

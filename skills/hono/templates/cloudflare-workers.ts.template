@@ -1,0 +1,76 @@
+// Hono on Cloudflare Workers — entry with typed bindings.
+// wrangler.toml binds KV, D1, env vars; the typing here mirrors that.
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
+import { jwt } from 'hono/jwt';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+
+type Bindings = {
+  KV: KVNamespace;
+  DB: D1Database;
+  R2: R2Bucket;
+  JWT_SECRET: string;
+  ENVIRONMENT: 'dev' | 'staging' | 'prod';
+};
+
+type Variables = {
+  jwtPayload?: { sub: string; role: 'user' | 'admin' };
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+app.use('*', secureHeaders());
+app.use('/api/*', cors({ origin: ['https://example.com'], credentials: true }));
+
+app.get('/health', (c) => c.json({ env: c.env.ENVIRONMENT, ok: true }));
+
+// KV-backed cache
+app.get('/cached/:key', async (c) => {
+  const key = c.req.param('key');
+  const cached = await c.env.KV.get(key);
+  if (cached) return c.json({ value: cached, source: 'kv' });
+
+  const value = `computed:${Date.now()}`;
+  // fire-and-forget cache write; doesn't block the response
+  c.executionCtx.waitUntil(c.env.KV.put(key, value, { expirationTtl: 60 }));
+  return c.json({ value, source: 'fresh' });
+});
+
+// D1 query
+app.get('/posts', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT id, title FROM posts ORDER BY id DESC LIMIT 50').all();
+  return c.json(results);
+});
+
+// Protected admin route via JWT
+app.use('/admin/*', (c, next) => jwt({ secret: c.env.JWT_SECRET, alg: 'HS256' })(c, next));
+
+app.post('/admin/posts',
+  zValidator('json', z.object({ title: z.string().min(1), body: z.string() })),
+  async (c) => {
+    const payload = c.get('jwtPayload');
+    if (payload?.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const { title, body } = c.req.valid('json');
+    const r = await c.env.DB.prepare('INSERT INTO posts (title, body) VALUES (?1, ?2) RETURNING id')
+      .bind(title, body).first<{ id: number }>();
+    return c.json({ id: r!.id, title }, 201);
+  });
+
+// R2 upload via signed presigned URL pattern (simplified inline upload)
+app.put('/uploads/:key', async (c) => {
+  const key = c.req.param('key');
+  const body = c.req.raw.body!;
+  await c.env.R2.put(key, body);
+  return c.json({ key, ok: true });
+});
+
+app.notFound((c) => c.json({ error: 'not_found' }, 404));
+app.onError((err, c) => {
+  console.error(err);
+  return c.json({ error: 'internal_error' }, 500);
+});
+
+export default app;

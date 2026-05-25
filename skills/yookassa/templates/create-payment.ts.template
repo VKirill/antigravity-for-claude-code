@@ -1,0 +1,98 @@
+// YooKassa — create a payment via @a2seven/yoo-checkout
+//
+// Used from a Next.js Route Handler, Fastify route, or Server Action.
+
+import { YooCheckout } from '@a2seven/yoo-checkout';
+import { z } from 'zod';
+import { buildReceipt } from './receipt'; // see receipt.ts.template
+
+const env = z.object({
+  YOOKASSA_SHOP_ID: z.string().regex(/^\d+$/),
+  YOOKASSA_SECRET_KEY: z.string().regex(/^(live|test)_/),
+}).parse(process.env);
+
+const checkout = new YooCheckout({
+  shopId: env.YOOKASSA_SHOP_ID,
+  secretKey: env.YOOKASSA_SECRET_KEY,
+});
+
+interface CreatePaymentArgs {
+  orderId: string;
+  amount: number;        // RUB, will be formatted as string with 2 decimals
+  description: string;
+  customerEmail: string;
+  returnUrl: string;
+  confirmationType?: 'redirect' | 'embedded';
+  capture?: boolean;     // default true (one-stage)
+  savePaymentMethod?: boolean;
+  metadata?: Record<string, string>;
+}
+
+export async function createPayment(args: CreatePaymentArgs) {
+  const idempotenceKey = crypto.randomUUID();
+
+  const confirmation = args.confirmationType === 'embedded'
+    ? { type: 'embedded' as const }
+    : { type: 'redirect' as const, return_url: args.returnUrl };
+
+  const payment = await checkout.createPayment({
+    amount: { value: args.amount.toFixed(2), currency: 'RUB' },
+    capture: args.capture ?? true,
+    confirmation,
+    description: args.description,
+    save_payment_method: args.savePaymentMethod ?? false,
+    metadata: { order_id: args.orderId, ...args.metadata },
+    receipt: buildReceipt({
+      items: [{
+        description: args.description,
+        quantity: 1,
+        amount: args.amount,
+        vatCode: 1,                  // НДС не облагается
+        paymentSubject: 'service',
+        paymentMode: 'full_payment',
+      }],
+      customer: { email: args.customerEmail },
+      taxSystemCode: 2,              // УСН доходы
+    }),
+  }, idempotenceKey);
+
+  return {
+    paymentId: payment.id,
+    status: payment.status,
+    confirmationUrl: payment.confirmation && 'confirmation_url' in payment.confirmation
+      ? payment.confirmation.confirmation_url
+      : null,
+    confirmationToken: payment.confirmation && 'confirmation_token' in payment.confirmation
+      ? payment.confirmation.confirmation_token
+      : null,
+    idempotenceKey,
+  };
+}
+
+// Example usage in a Next.js Route Handler:
+//
+// // app/api/payments/route.ts
+// export async function POST(req: Request) {
+//   const { orderId } = await req.json();
+//   const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
+//
+//   const result = await createPayment({
+//     orderId: order.id,
+//     amount: Number(order.amount),
+//     description: `Заказ #${order.id}`,
+//     customerEmail: order.email,
+//     returnUrl: `https://example.com/orders/${order.id}/result`,
+//     confirmationType: 'embedded',
+//   });
+//
+//   await db.payment.create({
+//     data: {
+//       orderId: order.id,
+//       yookassaId: result.paymentId,
+//       idempotenceKey: result.idempotenceKey,
+//       status: 'pending',
+//     },
+//   });
+//
+//   return Response.json({ confirmation_token: result.confirmationToken });
+// }

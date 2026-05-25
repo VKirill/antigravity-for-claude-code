@@ -1,0 +1,56 @@
+// templates/middleware.ts — Next.js 16 proxy.ts template
+// Rename this file to proxy.ts in your project root
+// Placeholders: {{PROTECTED_PATHS}}, {{JWT_SECRET_ENV_VAR}}
+
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+// For JWT validation at Edge (install: npm i jose)
+// import { jwtVerify } from 'jose'
+
+// ── Auth check (simple cookie) ────────────────────────────────────────────────
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const token = request.cookies.get('token')?.value
+
+  // Redirect unauthenticated users to login
+  if (!token) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('from', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Pass request ID downstream (useful for tracing)
+  const response = NextResponse.next()
+  response.headers.set('x-request-id', crypto.randomUUID())
+  return response
+}
+
+// ── Matcher: only run on protected paths ─────────────────────────────────────
+// Replace {{PROTECTED_PATHS}} with your actual protected route patterns
+export const config = {
+  matcher: [
+    '{{PROTECTED_PATHS}}',    // e.g. '/dashboard/:path*'
+    // Add more patterns as needed:
+    // '/settings/:path*',
+    // '/api/user/:path*',
+  ],
+}
+
+// ── Alternative: JWT validation at Edge ───────────────────────────────────────
+// Uncomment and replace simple cookie check above
+//
+// const SECRET = new TextEncoder().encode(process.env.{{JWT_SECRET_ENV_VAR}})
+//
+// export async function middleware(request: NextRequest) {
+//   const token = request.cookies.get('token')?.value
+//   if (!token) return NextResponse.redirect(new URL('/login', request.url))
+//
+//   try {
+//     await jwtVerify(token, SECRET)
+//     return NextResponse.next()
+//   } catch {
+//     const res = NextResponse.redirect(new URL('/login', request.url))
+//     res.cookies.delete('token')
+//     return res
+//   }
+// }

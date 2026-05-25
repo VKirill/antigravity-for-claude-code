@@ -1,0 +1,90 @@
+// Prisma 7 schema starter for PostgreSQL.
+// NOTE: datasource.url lives in prisma.config.ts in v7 — NOT here.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+  // previewFeatures = ["multiSchema", "views", "tracing"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(USER)
+  posts     Post[]
+  profile   Profile?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Profile {
+  id     String  @id @default(cuid())
+  bio    String?
+  userId String  @unique
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String   @db.VarChar(200)
+  body      String   @db.Text
+  published Boolean  @default(false)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tags      Tag[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([published, createdAt(sort: Desc)])
+  @@map("posts")
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  posts Post[]
+
+  @@map("tags")
+}
+
+// Example of money — DO use Decimal, never Float
+model Order {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String   @default("RUB") @db.Char(3)
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELED
+}

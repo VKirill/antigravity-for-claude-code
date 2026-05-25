@@ -1,0 +1,94 @@
+/**
+ * templates/webhook-server-hono.ts.template
+ * Hono 4 webhook handler — Cloudflare Workers ready.
+ * Works on: Cloudflare Workers, Vercel Edge, Bun, Node.js.
+ *
+ * Placeholders: {{WEBHOOK_PATH}}
+ *
+ * Install (Node.js):
+ *   npm install grammy hono @hono/node-server zod
+ *
+ * Cloudflare Workers deploy:
+ *   npm create cloudflare@latest my-bot -- --template grammy/cloudflare-workers
+ *   wrangler secret put BOT_TOKEN
+ *   wrangler secret put WEBHOOK_SECRET
+ *   wrangler deploy
+ */
+
+import { Hono } from "hono";
+import { Bot, webhookCallback } from "grammy";
+
+// ---------------------------------------------------------------------------
+// Cloudflare Workers environment bindings
+// (Replace with process.env for Node.js or Vercel Edge deployments)
+// ---------------------------------------------------------------------------
+
+interface Env {
+  BOT_TOKEN: string;
+  WEBHOOK_SECRET: string;
+}
+
+// ---------------------------------------------------------------------------
+// Bot factory (one instance per isolate invocation on Workers)
+// ---------------------------------------------------------------------------
+
+function createBot(token: string): Bot {
+  const bot = new Bot(token);
+
+  // Register your handlers here
+  bot.command("start", (ctx) => ctx.reply("Hello from the edge!"));
+  bot.command("help", (ctx) => ctx.reply("Send /start to begin."));
+
+  bot.callbackQuery(/^action:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "Action received!" });
+    await ctx.editMessageText(`Executed: ${ctx.match[1]}`);
+  });
+
+  bot.on("callback_query", (ctx) => ctx.answerCallbackQuery());
+
+  bot.catch((err) => {
+    console.error("Bot error:", err.error, err.ctx.update);
+  });
+
+  return bot;
+}
+
+// ---------------------------------------------------------------------------
+// Hono app
+// ---------------------------------------------------------------------------
+
+const app = new Hono<{ Bindings: Env }>();
+
+// Health check
+app.get("/health", (c) => c.json({ status: "ok", timestamp: Date.now() }));
+
+// Webhook route with secret_token middleware
+app.post("{{WEBHOOK_PATH}}", async (c) => {
+  const env = c.env;
+
+  // Validate secret token before processing the update
+  const incomingSecret = c.req.header("X-Telegram-Bot-Api-Secret-Token");
+  if (incomingSecret !== env.WEBHOOK_SECRET) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const bot = createBot(env.BOT_TOKEN);
+  const handleUpdate = webhookCallback(bot, "hono");
+  return handleUpdate(c);
+});
+
+// ---------------------------------------------------------------------------
+// Export for Cloudflare Workers
+// ---------------------------------------------------------------------------
+
+export default app;
+
+// ---------------------------------------------------------------------------
+// Node.js server (remove if deploying to Cloudflare Workers)
+// ---------------------------------------------------------------------------
+
+// Uncomment for Node.js / Bun deployment:
+// import { serve } from "@hono/node-server";
+// serve({ fetch: app.fetch, port: 3000 }, (info) => {
+//   console.log(`Hono webhook server listening on port ${info.port}`);
+// });

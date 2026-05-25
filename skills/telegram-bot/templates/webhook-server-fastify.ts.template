@@ -1,0 +1,129 @@
+/**
+ * templates/webhook-server-fastify.ts.template
+ * Fastify 5 webhook handler for a grammY bot.
+ * Validates X-Telegram-Bot-Api-Secret-Token on every request.
+ *
+ * Placeholders: {{BOT_TOKEN}}, {{WEBHOOK_PATH}}, {{PORT}}
+ *
+ * Install:
+ *   npm install grammy fastify @fastify/formbody zod pino
+ */
+
+import Fastify from "fastify";
+import { Bot, webhookCallback } from "grammy";
+import { z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Environment validation
+// ---------------------------------------------------------------------------
+
+const Env = z.object({
+  BOT_TOKEN: z.string().min(10),
+  WEBHOOK_SECRET: z.string().min(16),           // generated with: openssl rand -hex 32
+  WEBHOOK_PATH: z.string().default("/webhook"),
+  PORT: z.coerce.number().default(3000),
+  HOST: z.string().default("0.0.0.0"),
+  NODE_ENV: z.enum(["development", "production"]).default("production"),
+});
+
+const env = Env.parse(process.env);
+
+// ---------------------------------------------------------------------------
+// Bot instance (import from your bot module in real projects)
+// ---------------------------------------------------------------------------
+
+const bot = new Bot(env.BOT_TOKEN);
+
+// Register your handlers here (or import from bot.ts)
+bot.command("start", (ctx) => ctx.reply("Hello!"));
+
+// ---------------------------------------------------------------------------
+// Fastify server
+// ---------------------------------------------------------------------------
+
+const fastify = Fastify({
+  logger: {
+    level: env.NODE_ENV === "development" ? "debug" : "info",
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Secret token validation hook
+// Runs BEFORE the webhook callback — rejects spoofed requests immediately
+// ---------------------------------------------------------------------------
+
+fastify.addHook("preHandler", async (request, reply) => {
+  // Only validate on the webhook path
+  if (request.url !== env.WEBHOOK_PATH) return;
+
+  const incomingToken = request.headers["x-telegram-bot-api-secret-token"];
+  if (incomingToken !== env.WEBHOOK_SECRET) {
+    reply.code(401).send({ error: "Unauthorized" });
+    return;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Webhook route
+// ---------------------------------------------------------------------------
+
+const handleUpdate = webhookCallback(bot, "fastify");
+
+fastify.post(env.WEBHOOK_PATH, handleUpdate);
+
+// ---------------------------------------------------------------------------
+// Health check route (used by load balancers, PM2, Kubernetes probes)
+// ---------------------------------------------------------------------------
+
+fastify.get("/health", async () => {
+  return { status: "ok", timestamp: Date.now() };
+});
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+
+async function start() {
+  try {
+    await fastify.listen({ port: env.PORT, host: env.HOST });
+    fastify.log.info(
+      `Webhook server listening on ${env.HOST}:${env.PORT}${env.WEBHOOK_PATH}`
+    );
+
+    // Set webhook URL at startup (run once; idempotent)
+    // In production, call this from a separate deploy script, not on every restart
+    if (env.NODE_ENV === "production") {
+      const webhookUrl = process.env.WEBHOOK_URL; // e.g. https://your-domain.com
+      if (webhookUrl) {
+        await bot.api.setWebhook(`${webhookUrl}${env.WEBHOOK_PATH}`, {
+          secret_token: env.WEBHOOK_SECRET,
+          allowed_updates: [
+            "message",
+            "callback_query",
+            "inline_query",
+            "pre_checkout_query",
+            "my_chat_member",
+          ],
+          drop_pending_updates: false,
+          max_connections: 40,
+        });
+        fastify.log.info("Webhook registered with Telegram");
+      }
+    }
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+const stop = async () => {
+  fastify.log.info("Shutting down webhook server...");
+  await fastify.close();
+  process.exit(0);
+};
+
+process.once("SIGTERM", stop);
+process.once("SIGINT", stop);
+
+start();

@@ -1,0 +1,180 @@
+/**
+ * templates/form-component.tsx
+ * Typed form with Zod schema + shadcn/ui Form component
+ *
+ * Placeholders to replace:
+ *   {{FormName}}     - e.g. ProfileForm, RegistrationForm
+ *   {{schemaName}}   - e.g. profileSchema, registrationSchema
+ *   {{ApiPayload}}   - type for API request body (often same as Schema)
+ *   {{submitApiUrl}} - e.g. '/api/profile'
+ *
+ * Dependencies:
+ *   react-hook-form
+ *   @hookform/resolvers
+ *   zod
+ *   shadcn/ui: Form, Input, Button (npx shadcn add form input button)
+ */
+
+'use client'
+
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+
+// ─── 1. Define Zod schema ────────────────────────────────────────────────────
+
+const {{schemaName}} = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Must be a valid email address'),
+  // Add more fields here
+})
+
+// Infer TypeScript type — single source of truth
+type Schema = z.infer<typeof {{schemaName}}>
+
+// ─── 2. Default values ───────────────────────────────────────────────────────
+
+const DEFAULT_VALUES: Schema = {
+  name: '',
+  email: '',
+}
+
+// ─── 3. Form component ───────────────────────────────────────────────────────
+
+interface {{FormName}}Props {
+  /**
+   * Called with validated data after successful submission.
+   * Throw to propagate server errors back into the form.
+   */
+  onSubmit: (data: Schema) => Promise<void>
+  /** Pre-fill values for edit mode */
+  defaultValues?: Partial<Schema>
+}
+
+export function {{FormName}}({ onSubmit, defaultValues }: {{FormName}}Props) {
+  const form = useForm<Schema>({
+    resolver: zodResolver({{schemaName}}),
+    defaultValues: { ...DEFAULT_VALUES, ...defaultValues },
+    mode: 'onBlur',           // Validate on blur; re-validate onChange after first submit
+    reValidateMode: 'onChange',
+  })
+
+  const { isSubmitting, isSubmitSuccessful } = form.formState
+
+  async function handleSubmit(data: Schema) {
+    try {
+      await onSubmit(data)
+      // Success: reset to submitted values (clears isDirty)
+      form.reset(data)
+    } catch (err) {
+      // Server validation errors — expected shape: { field: string; message: string }[]
+      if (isApiValidationError(err)) {
+        for (const fieldErr of err.errors) {
+          form.setError(fieldErr.field as keyof Schema, {
+            type: 'server',
+            message: fieldErr.message,
+          })
+        }
+      } else {
+        // Non-field error (network, unknown server error)
+        form.setError('root', {
+          type: 'server',
+          message: 'Something went wrong. Please try again.',
+        })
+      }
+    }
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(handleSubmit)}
+        className="space-y-6"
+        noValidate  // Let RHF + Zod handle validation, not browser
+      >
+        {/* ── Root / global error ── */}
+        {form.formState.errors.root && (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            {form.formState.errors.root.message}
+          </div>
+        )}
+
+        {/* ── Name field ── */}
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input placeholder="Jane Smith" {...field} />
+              </FormControl>
+              <FormDescription>Your display name.</FormDescription>
+              <FormMessage />  {/* Renders errors.name.message */}
+            </FormItem>
+          )}
+        />
+
+        {/* ── Email field ── */}
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input type="email" placeholder="jane@example.com" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* ── Submit ── */}
+        <div className="flex gap-3">
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Saving…' : 'Save'}
+          </Button>
+          {form.formState.isDirty && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => form.reset()}
+            >
+              Reset
+            </Button>
+          )}
+        </div>
+      </form>
+    </Form>
+  )
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+interface ApiValidationError {
+  errors: { field: string; message: string }[]
+}
+
+function isApiValidationError(err: unknown): err is ApiValidationError {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'errors' in err &&
+    Array.isArray((err as ApiValidationError).errors)
+  )
+}

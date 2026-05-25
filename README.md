@@ -89,12 +89,15 @@ The user observes progress from any terminal with `task list`, `task show <id>`,
 
 ## Included Skills (`/skills`)
 
-These guide Gemini to act as a professional coder, architect, or designer:
+A curated **programming** skill pack (**94 skills**) that agy workers load via their contract's `skill_hints` — so Gemini codes against current 2026 idioms instead of training-data defaults. Marketing / SEO / design-creative / third-party skills are intentionally excluded. Install with `./scripts/install-skills.sh` (step 5).
 
-* **Core**: `coder-craft` (clean code, surgical edits, no extra refactoring), `karpathy-guidelines` (think before coding, simplicity first).
-* **Workflow**: `orchestrator-workflow` (YAML contract parsing, DB structure, autonomous recovery), `claude-code` (integration patterns).
-* **Frontend**: `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `web-qa-2026`, `media-asset-pipeline`.
-* **Testing & text**: `pytest`, `vitest`, `ru-text-quick` (strict editorial guidelines, no AI clichés).
+* **Craft & discipline**: `coder-craft`, `karpathy-guidelines`, `architecture-craft`, `data-systems-craft`, `refactoring`, `refactor-hotspots-craft`, `review-craft`, `testing-craft`, `tdd`, `debugging-craft`, `systematic-debugging`, `logging-standards-2026`, `cybersecurity-audit`, `ru-text-quick`.
+* **Workflow & meta**: `orchestrator-workflow`, `claude-code`, `claude-api`, `mcp-builder`, `agent-builder`, `skill-evaluation`, `project-architecting`, `git`, `linux-sysadmin`, `gitnexus-*`.
+* **Languages**: `typescript`, `python`, `pydantic`, `sqlalchemy`, `httpx`, `numpy`, `pandas`, `polars`, `scikit-learn`, `pytorch`, `transformers`, `cuda-python`.
+* **Frontend**: `react`, `vue`, `nextjs`, `nuxt`, `astro`, `tailwind`, `shadcn`, `react-hook-form`, `tanstack-query`, `vite`, `biome`, `eslint`, `i18n`, `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `ui-craft`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `web-qa-2026`, `media-asset-pipeline`.
+* **Backend / data**: `nodejs`, `fastify`, `hono`, `fastapi`, `django`, `langchain`, `better-auth`, `bullmq`, `prisma`, `postgresql`, `redis`, `zod`.
+* **Integrations**: `cloudpayments`, `yookassa`, `telegram-bot`, `vk-bridge`, `max-bridge`, `expo`, `remotion`, `google-cloud-auth`, `yandex-cloud`, `proxy6`.
+* **Testing**: `pytest`, `vitest`, `playwright`.
 
 ---
 
@@ -171,8 +174,10 @@ This sets sensible defaults for every project and documents the auto-push-to-`ma
 
 ### 5. Install the developer skills
 ```bash
-mkdir -p ~/.gemini/antigravity-cli/skills
-cp -r skills/* ~/.gemini/antigravity-cli/skills/
+./scripts/install-skills.sh
+# installs all bundled skills into ~/.agents/skills (agy's skills dir;
+# ~/.gemini/antigravity-cli/skills is a symlink to it).
+# custom target: AGY_SKILLS_DIR=/path ./scripts/install-skills.sh
 ```
 
 ### 6. Install the quality hooks (recommended)

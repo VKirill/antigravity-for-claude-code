@@ -1,0 +1,140 @@
+// Redis Streams consumer group with auto-claim of stalled entries.
+// At-least-once delivery, graceful shutdown.
+
+import type Redis from 'ioredis';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+interface ConsumerOptions {
+  stream: string;
+  group: string;
+  consumer: string;
+  batchSize?: number;
+  blockMs?: number;
+  minIdleMs?: number;          // claim entries idle longer than this
+  claimEveryMs?: number;       // run autoclaim sweep every N ms
+}
+
+type FieldMap = Record<string, string>;
+type Handler = (id: string, fields: FieldMap) => Promise<void>;
+
+export class StreamConsumer {
+  private running = true;
+
+  constructor(private readonly redis: Redis, private readonly opts: ConsumerOptions) {}
+
+  async start(handler: Handler) {
+    await this.ensureGroup();
+
+    // Background: claim stalled entries every claimEveryMs
+    const claimLoop = this.runClaimLoop(handler);
+
+    while (this.running) {
+      try {
+        const result = await this.redis.xreadgroup(
+          'GROUP', this.opts.group, this.opts.consumer,
+          'COUNT', this.opts.batchSize ?? 10,
+          'BLOCK', this.opts.blockMs ?? 5000,
+          'STREAMS', this.opts.stream, '>',
+        );
+        if (!result) continue;
+
+        for (const [, entries] of result as [string, [string, string[]][]][]) {
+          for (const [id, fieldArr] of entries) {
+            const fields = arrayToMap(fieldArr);
+            try {
+              await handler(id, fields);
+              await this.redis.xack(this.opts.stream, this.opts.group, id);
+            } catch (err) {
+              console.error(`[stream] handler failed for ${id}; will be reclaimed`, err);
+              // No XACK → entry stays pending, will be claimed by another consumer
+            }
+          }
+        }
+      } catch (err) {
+        if (!this.running) break;
+        console.error('[stream] read error', err);
+        await sleep(1000);
+      }
+    }
+
+    await claimLoop;
+  }
+
+  async stop() {
+    this.running = false;
+  }
+
+  private async ensureGroup() {
+    try {
+      await this.redis.xgroup('CREATE', this.opts.stream, this.opts.group, '$', 'MKSTREAM');
+      console.log(`[stream] created group ${this.opts.group}`);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (!msg.includes('BUSYGROUP')) throw err;
+    }
+  }
+
+  private async runClaimLoop(handler: Handler) {
+    const minIdle = this.opts.minIdleMs ?? 60_000;
+    const interval = this.opts.claimEveryMs ?? 30_000;
+
+    while (this.running) {
+      await sleep(interval);
+      if (!this.running) break;
+
+      try {
+        const result = await this.redis.xautoclaim(
+          this.opts.stream, this.opts.group, this.opts.consumer,
+          minIdle, '0',
+          'COUNT', 50,
+        ) as [string, [string, string[]][], string[]];
+
+        const [, entries] = result;
+        for (const [id, fieldArr] of entries) {
+          const fields = arrayToMap(fieldArr);
+          try {
+            await handler(id, fields);
+            await this.redis.xack(this.opts.stream, this.opts.group, id);
+          } catch (err) {
+            console.error(`[stream] claim handler failed for ${id}`, err);
+          }
+        }
+      } catch (err) {
+        console.error('[stream] autoclaim error', err);
+      }
+    }
+  }
+}
+
+function arrayToMap(arr: string[]): FieldMap {
+  const out: FieldMap = {};
+  for (let i = 0; i < arr.length; i += 2) out[arr[i]] = arr[i + 1];
+  return out;
+}
+
+// --- Usage ---
+//
+// import { redis } from './redis';
+// import { StreamConsumer } from './streams-consumer';
+//
+// const consumer = new StreamConsumer(redis, {
+//   stream: 'events',
+//   group: 'orders-processors',
+//   consumer: `${process.env.HOSTNAME}-${process.pid}`,
+//   batchSize: 20,
+//   blockMs: 5000,
+//   minIdleMs: 60_000,
+//   claimEveryMs: 30_000,
+// });
+//
+// process.once('SIGTERM', () => consumer.stop());
+//
+// await consumer.start(async (id, fields) => {
+//   console.log('process', id, fields);
+//   if (fields.type === 'order.paid') {
+//     await fulfillOrder(fields.orderId);
+//   }
+// });
+//
+// // Producer:
+// await redis.xadd('events', 'MAXLEN', '~', 100_000, '*', 'type', 'order.paid', 'orderId', '42');

@@ -1,0 +1,45 @@
+// astro.config.mjs — production preset
+// Adjust `output`, adapter, and integrations to project needs.
+// Placeholders: {{SITE_URL}}, adapter import (Node | Vercel | Cloudflare | Netlify)
+
+import { defineConfig } from "astro/config";
+import react from "@astrojs/react";
+import sitemap from "@astrojs/sitemap";
+import tailwindcss from "@tailwindcss/vite"; // Tailwind 4 via Vite plugin (NOT @astrojs/tailwind v3)
+
+// Pick one adapter (uncomment as needed):
+import node from "@astrojs/node";
+// import vercel from "@astrojs/vercel";
+// import cloudflare from "@astrojs/cloudflare";
+// import netlify from "@astrojs/netlify";
+
+export default defineConfig({
+  site: "{{SITE_URL}}", // e.g. "https://example.com" — required for sitemap + canonical URLs
+
+  // Output mode:
+  //   'static' — pure SSG, build → dist/ → any CDN
+  //   'server' — full SSR (every route SSR by default; opt out per page via export const prerender = true)
+  output: "server",
+
+  // Adapter: must match deploy target. Drop adapter for pure static (output: 'static').
+  adapter: node({ mode: "standalone" }),
+
+  // Integrations: framework islands, MDX, sitemap, RSS, etc.
+  integrations: [
+    react(), // React islands; add () or { include: ['**/react/*'] } for scoping
+    sitemap(),
+  ],
+
+  // Vite layer — Tailwind 4, custom plugins, defines, etc.
+  vite: {
+    plugins: [tailwindcss()],
+  },
+
+  // Image optimization service (default 'sharp' for Node, 'compile' for static-only)
+  image: {
+    service: { entrypoint: "astro/assets/services/sharp" },
+  },
+
+  // Optional: View Transitions / Server Islands are on by default in Astro 6
+  // experimental: { ... } — flags here only when you opt into experimental APIs
+});

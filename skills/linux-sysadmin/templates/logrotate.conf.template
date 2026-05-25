@@ -1,0 +1,63 @@
+# logrotate config template
+# Replace: /path/to/APP/logs/*.log, APP_USER, APP_GROUP, SERVICE_NAME
+# Install: cp to /etc/logrotate.d/APP_NAME
+# Test (dry run): logrotate -d /etc/logrotate.d/APP_NAME
+# Force run:      logrotate -f /etc/logrotate.d/APP_NAME
+
+/path/to/APP/logs/*.log {
+    # Rotation frequency
+    daily           # rotate every day
+    # weekly        # or weekly
+    # size 100M     # or when size exceeds threshold
+
+    # Keep this many rotated files
+    rotate 14
+
+    # Compression
+    compress           # gzip rotated files
+    delaycompress      # don't compress the most recent rotation (lets app finish writing)
+
+    # Behavior
+    missingok          # don't error if log file doesn't exist
+    notifempty         # don't rotate if file is empty
+    copytruncate       # copy file then truncate (use if app doesn't support SIGHUP)
+    # Alternative: use postrotate to send signal instead of copytruncate
+
+    # Create new log file after rotation
+    create 0640 APP_USER APP_GROUP
+
+    # Run pre/post scripts once for all matched logs
+    sharedscripts
+
+    # Reload service after rotation (comment out if using copytruncate)
+    # postrotate
+    #     systemctl reload SERVICE_NAME > /dev/null 2>&1 || true
+    #     # or: kill -USR1 $(cat /var/run/SERVICE_NAME.pid) 2>/dev/null || true
+    # endscript
+}
+
+# PM2 app logs
+# /home/ubuntu/.pm2/logs/APP_NAME*.log {
+#     daily
+#     rotate 7
+#     compress
+#     delaycompress
+#     missingok
+#     notifempty
+#     copytruncate     # PM2 doesn't support SIGHUP log reopen
+# }
+
+# Angie / nginx logs (use postrotate to reopen)
+# /var/log/angie/APP_NAME*.log {
+#     daily
+#     rotate 14
+#     compress
+#     delaycompress
+#     missingok
+#     notifempty
+#     create 0640 www-data adm
+#     sharedscripts
+#     postrotate
+#         angie -s reopen 2>/dev/null || true
+#     endscript
+# }

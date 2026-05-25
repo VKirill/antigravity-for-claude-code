@@ -1,0 +1,113 @@
+// CloudPayments — 54-ФЗ CustomerReceipt builder helper.
+// Pass the result via JsonData.CloudPayments.CustomerReceipt in charge/refund requests,
+// or via widget options data.CloudPayments.CustomerReceipt.
+
+export type TaxationSystem = 0 | 1 | 2 | 3 | 4 | 5;
+// 0 ОСН | 1 УСН доходы | 2 УСН доходы-расходы | 3 ЕСХН | 4 Патент | 5 НПД
+
+export type Vat = null | 0 | 10 | 20;
+// null = НДС не облагается | 0 / 10 / 20 = ставка НДС
+
+export type PaymentMethod = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+// 1 предоплата 100% | 2 предоплата | 3 аванс | 4 полный расчёт | 5 частичный расчёт и кредит | 6 кредит | 7 оплата кредита
+
+export type PaymentObject = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+// 1 товар | 3 работа | 4 услуга | 10 платёж | 13 иной
+
+export interface ReceiptItem {
+  label: string;
+  price: number;
+  quantity: number;
+  vat: Vat;
+  method?: PaymentMethod;        // default 4 (полный расчёт)
+  object?: PaymentObject;        // default 4 (услуга)
+  measurementUnit?: string;
+}
+
+export interface CustomerReceipt {
+  Items: Array<{
+    label: string;
+    price: number;
+    quantity: number;
+    amount: number;
+    vat: Vat;
+    method: PaymentMethod;
+    object: PaymentObject;
+    measurementUnit?: string;
+  }>;
+  taxationSystem: TaxationSystem;
+  email?: string;
+  phone?: string;
+  isBso?: boolean;
+  AmountsHelp: {
+    electronic: number;
+    advancePayment?: number;
+    credit?: number;
+    provision?: number;
+  };
+}
+
+export interface BuildReceiptArgs {
+  items: ReceiptItem[];
+  taxationSystem: TaxationSystem;
+  email?: string;
+  phone?: string;
+}
+
+export function buildCustomerReceipt(args: BuildReceiptArgs): CustomerReceipt {
+  if (!args.email && !args.phone) {
+    throw new Error('CustomerReceipt requires email or phone (54-ФЗ)');
+  }
+  if (args.items.length === 0) {
+    throw new Error('CustomerReceipt must have at least 1 item');
+  }
+
+  const builtItems = args.items.map((i) => {
+    const amount = round2(i.price * i.quantity);
+    return {
+      label: i.label.slice(0, 128),
+      price: round2(i.price),
+      quantity: round3(i.quantity),
+      amount,
+      vat: i.vat,
+      method: i.method ?? 4,
+      object: i.object ?? 4,
+      measurementUnit: i.measurementUnit,
+    };
+  });
+
+  const electronic = round2(builtItems.reduce((sum, i) => sum + i.amount, 0));
+
+  return {
+    Items: builtItems,
+    taxationSystem: args.taxationSystem,
+    email: args.email,
+    phone: args.phone,
+    AmountsHelp: { electronic },
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+// Example: SaaS monthly subscription on УСН
+//
+// const receipt = buildCustomerReceipt({
+//   items: [{
+//     label: 'Подписка Pro · май 2026',
+//     price: 1000,
+//     quantity: 1,
+//     vat: null,
+//     object: 4,           // услуга
+//     measurementUnit: 'мес',
+//   }],
+//   taxationSystem: 1,     // УСН доходы
+//   email: user.email,
+// });
+//
+// Then attach:
+//   body: { ..., JsonData: { CloudPayments: { CustomerReceipt: receipt } } }

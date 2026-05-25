@@ -1,0 +1,63 @@
+# systemd service unit template
+# Replace: DESCRIPTION, USER, GROUP, WORKDIR, EXEC_CMD, APP_NAME
+# Install: cp to /etc/systemd/system/APP_NAME.service
+# Apply:   systemctl daemon-reload && systemctl enable --now APP_NAME
+
+[Unit]
+Description=DESCRIPTION
+Documentation=https://docs.example.com
+After=network-online.target
+Wants=network-online.target
+# Uncomment if service depends on postgres / redis:
+# After=network-online.target postgresql.service redis-server.service
+# Requires=postgresql.service
+
+[Service]
+Type=simple
+# Use 'notify' if app sends sd_notify('READY=1'):
+# Type=notify
+
+User=USER
+Group=GROUP
+WorkingDirectory=WORKDIR
+
+# Load environment variables from file (mode 600, owned by USER)
+EnvironmentFile=-WORKDIR/.env
+
+# Main process
+ExecStart=EXEC_CMD
+# Reload via SIGHUP (if app supports it):
+# ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart behavior
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+# Graceful shutdown timeout
+TimeoutStopSec=30s
+
+# Logging to journald (view with: journalctl -u APP_NAME -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=APP_NAME
+
+# Security hardening (tighten as needed)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=WORKDIR/data WORKDIR/logs /tmp
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+# Uncomment to restrict networking (e.g., for batch workers)
+# PrivateNetwork=yes
+# IPAddressDeny=any
+# IPAddressAllow=localhost 127.0.0.0/8
+
+[Install]
+WantedBy=multi-user.target

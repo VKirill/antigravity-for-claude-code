@@ -1,0 +1,77 @@
+// nuxt.config.ts — production preset
+// Replace {{PLACEHOLDER}} values before use
+// Docs: https://nuxt.com/docs/guide/directory-structure/nuxt-config
+
+export default defineNuxtConfig({
+  // Required in Nuxt 4
+  compatibilityDate: '2024-11-01',
+
+  devtools: { enabled: true },
+
+  // ── Modules ────────────────────────────────────────────────────────────────
+  modules: [
+    // Uncomment what you need:
+    // '@nuxt/ui',               // Nuxt UI component library
+    // '@pinia/nuxt',            // Pinia state management
+    // '@nuxtjs/tailwindcss',    // Tailwind CSS integration
+    // '@nuxt/content',          // Content layer
+    // '@nuxt/image',            // Image optimization
+    // '@nuxtjs/i18n',           // Internationalization
+  ],
+
+  // ── Runtime Config (environment variables) ─────────────────────────────────
+  // Env var convention: NUXT_<KEY> for server, NUXT_PUBLIC_<KEY> for public
+  runtimeConfig: {
+    // Server-only — never exposed to browser
+    apiSecret: '',            // NUXT_API_SECRET
+    databaseUrl: '',          // NUXT_DATABASE_URL
+
+    public: {
+      // Available on both server and client
+      apiBase: '{{API_BASE_URL}}',   // NUXT_PUBLIC_API_BASE
+      siteUrl: '{{SITE_URL}}',       // NUXT_PUBLIC_SITE_URL
+    }
+  },
+
+  // ── Route Rules (hybrid rendering) ─────────────────────────────────────────
+  routeRules: {
+    // Customize per-route rendering strategy:
+    // '/':             { prerender: true },   // static at build
+    // '/blog/**':      { swr: 3600 },         // ISR — stale 1hr
+    // '/dashboard/**': { ssr: false },        // client SPA
+    // '/api/**':       { cors: true },        // CORS on API routes
+  },
+
+  // ── Nitro (server build + deployment) ──────────────────────────────────────
+  nitro: {
+    // Set to your target: 'node-server' | 'vercel' | 'netlify' |
+    //                     'cloudflare-pages' | 'cloudflare-module' | 'static'
+    preset: '{{NITRO_PRESET}}',
+
+    // Key-value storage drivers (optional)
+    // storage: {
+    //   cache: { driver: 'redis', host: '{{REDIS_HOST}}', port: 6379 },
+    // },
+  },
+
+  // ── TypeScript ──────────────────────────────────────────────────────────────
+  typescript: {
+    strict: true,
+    typeCheck: true,   // runs tsc at build — remove if too slow in CI
+  },
+
+  // ── App Head Defaults ───────────────────────────────────────────────────────
+  app: {
+    head: {
+      charset: 'utf-8',
+      viewport: 'width=device-width, initial-scale=1',
+      title: '{{APP_NAME}}',
+      meta: [
+        { name: 'description', content: '{{APP_DESCRIPTION}}' },
+      ],
+      link: [
+        { rel: 'icon', type: 'image/png', href: '/favicon.png' },
+      ],
+    },
+  },
+})

@@ -1,0 +1,78 @@
+# templates/Dockerfile.node24.template
+# Purpose: Multi-stage Docker build for Node.js 24 apps.
+#          Produces a distroless final image with non-root user and OCI labels.
+# Usage:   Copy to project root as `Dockerfile`, replace {{placeholders}}.
+# Notes:   - Change `npm ci` to `pnpm install --frozen-lockfile` or
+#            `yarn install --immutable` if not using npm.
+#          - For type-stripping (no build step), remove the `build` stage
+#            and copy .ts source + tsconfig directly into final image.
+
+ARG NODE_VERSION=24
+
+# =============================================================================
+# Stage 1: deps — install production dependencies only
+# =============================================================================
+FROM node:${NODE_VERSION}-alpine AS deps
+
+WORKDIR /app
+
+# Copy lockfile + package manifests first (layer cache on dependency change)
+COPY package.json package-lock.json ./
+
+# Install production deps only — ci = reproducible, no devDeps
+RUN npm ci --omit=dev --ignore-scripts
+
+# =============================================================================
+# Stage 2: build — compile TypeScript (skip if using Node 24 default type stripping)
+# =============================================================================
+FROM node:${NODE_VERSION}-alpine AS build
+
+WORKDIR /app
+
+# Install all deps (including devDeps for tsc)
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Copy source
+COPY tsconfig.json ./
+COPY src/ ./src/
+
+# Build
+RUN npm run build
+
+# =============================================================================
+# Stage 3: final — distroless Node, non-root, minimal attack surface
+# =============================================================================
+FROM gcr.io/distroless/nodejs${NODE_VERSION}-debian12 AS final
+
+# OCI image labels — replace placeholders before first push
+LABEL org.opencontainers.image.title="{{app_name}}"
+LABEL org.opencontainers.image.description="{{app_description}}"
+LABEL org.opencontainers.image.source="https://github.com/{{github_org}}/{{github_repo}}"
+LABEL org.opencontainers.image.licenses="{{license}}"
+
+WORKDIR /app
+
+# Copy production dependencies
+COPY --from=deps    /app/node_modules ./node_modules
+
+# Copy compiled output
+COPY --from=build   /app/dist ./dist
+
+# Copy package.json (needed by Node for "type": "module" resolution)
+COPY --from=build   /app/package.json ./
+
+# distroless/nodejs images run as uid=1000 (nonroot) by default
+# No USER directive needed — nonroot is the default in distroless/nodejs
+
+# Expose application port
+EXPOSE {{port}}
+
+# Health check for Docker/Compose — adjust path and interval as needed
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/nodejs/bin/node", "-e", \
+       "fetch('http://localhost:{{port}}/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+# Run as ES module entry point
+# For default type stripping (no build): CMD ["/nodejs/bin/node", "src/app/index.ts"]
+CMD ["/nodejs/bin/node", "dist/app/index.js"]

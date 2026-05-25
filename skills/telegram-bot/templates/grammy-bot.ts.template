@@ -1,0 +1,266 @@
+/**
+ * templates/grammy-bot.ts.template
+ * Production grammY 1.x bot — typed Context, Redis sessions, conversations,
+ * error handler, graceful shutdown, env validation with Zod.
+ *
+ * Placeholders: {{BOT_NAME}}, {{FEATURE_NAME}}, {{REDIS_KEY_PREFIX}}
+ *
+ * Install:
+ *   npm install grammy @grammyjs/conversations @grammyjs/storage-redis
+ *                @grammyjs/runner @grammyjs/auto-retry zod ioredis pino
+ */
+
+import { Bot, Context, session, SessionFlavor } from "grammy";
+import {
+  conversations,
+  createConversation,
+  ConversationFlavor,
+  Conversation,
+} from "@grammyjs/conversations";
+import { RedisAdapter } from "@grammyjs/storage-redis";
+import { run, sequentialize } from "@grammyjs/runner";
+import { autoRetry } from "@grammyjs/auto-retry";
+import { Redis } from "ioredis";
+import { z } from "zod";
+import pino from "pino";
+
+// ---------------------------------------------------------------------------
+// Environment validation (fail fast — never access process.env raw)
+// ---------------------------------------------------------------------------
+
+const Env = z.object({
+  BOT_TOKEN: z.string().min(10),
+  REDIS_URL: z.string().url(),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
+  ADMIN_USER_IDS: z
+    .string()
+    .transform((v) => v.split(",").map(Number))
+    .default(""),
+});
+
+const env = Env.parse(process.env);
+
+// ---------------------------------------------------------------------------
+// Logger
+// ---------------------------------------------------------------------------
+
+const logger = pino({
+  level: env.NODE_ENV === "development" ? "debug" : "info",
+  ...(env.NODE_ENV === "development" && {
+    transport: { target: "pino-pretty" },
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Session data schema
+// ---------------------------------------------------------------------------
+
+interface SessionData {
+  // Add your per-user/per-chat session fields here
+  step: string | null;
+  // {{FEATURE_NAME}}_state?: {{FeatureState}};
+}
+
+// ---------------------------------------------------------------------------
+// Context type — compose all plugin flavors here
+// ---------------------------------------------------------------------------
+
+type MyContext = ConversationFlavor<Context & SessionFlavor<SessionData>>;
+
+// ---------------------------------------------------------------------------
+// Redis connection (single IORedis instance for session storage)
+// ---------------------------------------------------------------------------
+
+const redis = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: null, // required for blocking commands
+  lazyConnect: true,
+});
+
+redis.on("error", (err) => logger.error({ err }, "Redis error"));
+
+// ---------------------------------------------------------------------------
+// Bot instance
+// ---------------------------------------------------------------------------
+
+const bot = new Bot<MyContext>(env.BOT_TOKEN);
+
+// ---------------------------------------------------------------------------
+// API-level middleware (applied before any handlers)
+// ---------------------------------------------------------------------------
+
+// Auto-retry on 429 rate limit with exponential backoff
+bot.api.config.use(autoRetry());
+
+// ---------------------------------------------------------------------------
+// Update middleware stack (ORDER MATTERS)
+// ---------------------------------------------------------------------------
+
+// 1. Timing + structured logging middleware
+bot.use(async (ctx, next) => {
+  const start = Date.now();
+  await next();
+  logger.info({
+    update_id: ctx.update.update_id,
+    type: Object.keys(ctx.update).find((k) => k !== "update_id"),
+    user_id: ctx.from?.id,
+    chat_id: ctx.chat?.id,
+    duration_ms: Date.now() - start,
+  });
+});
+
+// 2. sequentialize BEFORE session — prevents race conditions per chat
+bot.use(
+  sequentialize((ctx) => {
+    const chat = ctx.chat?.id.toString();
+    const user = ctx.from?.id.toString();
+    return [chat, user].filter(Boolean) as string[];
+  })
+);
+
+// 3. Session middleware with Redis adapter
+bot.use(
+  session({
+    initial: (): SessionData => ({ step: null }),
+    storage: new RedisAdapter({
+      instance: redis,
+      ttl: 60 * 60 * 24 * 30, // 30-day session TTL
+      // Key prefix avoids collisions if multiple bots share one Redis
+      // Key format: {{REDIS_KEY_PREFIX}}:sessions:<chat_id>:<user_id>
+    }),
+  })
+);
+
+// 4. Conversations plugin
+bot.use(conversations());
+
+// ---------------------------------------------------------------------------
+// Conversations (multi-step flows)
+// ---------------------------------------------------------------------------
+
+/**
+ * Example conversation: {{FEATURE_NAME}} registration flow.
+ * Replace with your actual conversation logic.
+ *
+ * RULES:
+ *   - ALL side effects (DB, random, Date.now) must use conversation.external()
+ *   - conversation.wait() suspends and resumes across bot restarts
+ */
+async function {{FEATURE_NAME}}Flow(
+  conversation: Conversation<MyContext>,
+  ctx: MyContext
+): Promise<void> {
+  await ctx.reply("What is your name?");
+  const nameCtx = await conversation.waitFor("message:text");
+  const name = nameCtx.message.text;
+
+  await ctx.reply(`Nice to meet you, ${name}! What is your email?`);
+  const emailCtx = await conversation.waitFor("message:text");
+  const email = emailCtx.message.text;
+
+  // Side effects MUST be wrapped — this runs once and is cached
+  await conversation.external(async () => {
+    // await db.save({ name, email, userId: ctx.from!.id });
+    logger.info({ name, email, userId: ctx.from?.id }, "User registered");
+  });
+
+  await ctx.reply(`Registered! Welcome, ${name}.`);
+}
+
+bot.use(createConversation({{FEATURE_NAME}}Flow));
+
+// ---------------------------------------------------------------------------
+// Command handlers
+// ---------------------------------------------------------------------------
+
+bot.command("start", async (ctx) => {
+  await ctx.reply(
+    `Welcome to {{BOT_NAME}}!\n\nAvailable commands:\n/help — show help\n/{{FEATURE_NAME}} — start flow`
+  );
+});
+
+bot.command("help", async (ctx) => {
+  await ctx.reply("Send /{{FEATURE_NAME}} to begin.");
+});
+
+bot.command("{{FEATURE_NAME}}", async (ctx) => {
+  await ctx.conversation.enter("{{FEATURE_NAME}}Flow");
+});
+
+// ---------------------------------------------------------------------------
+// Callback query handler (ALWAYS answer or users see a spinner)
+// ---------------------------------------------------------------------------
+
+bot.callbackQuery(/^action:(.+)$/, async (ctx) => {
+  const action = ctx.match[1];
+  await ctx.answerCallbackQuery({ text: `Executing: ${action}` });
+  await ctx.editMessageText(`Action taken: ${action}`);
+});
+
+// Catch-all for unknown callbacks
+bot.on("callback_query", async (ctx) => {
+  await ctx.answerCallbackQuery({ text: "Unknown action" });
+});
+
+// ---------------------------------------------------------------------------
+// Global error handler
+// ---------------------------------------------------------------------------
+
+bot.catch((err) => {
+  const { error, ctx } = err;
+  logger.error(
+    {
+      err: error,
+      update: ctx.update,
+      user_id: ctx.from?.id,
+    },
+    "Unhandled bot error"
+  );
+  // Optionally notify the user
+  ctx.reply("An error occurred. Please try again later.").catch(() => {});
+});
+
+// ---------------------------------------------------------------------------
+// Start with graceful shutdown
+// ---------------------------------------------------------------------------
+
+async function main() {
+  await redis.connect();
+  logger.info("Redis connected");
+
+  // Use run() for concurrent long polling (handles up to 500 concurrent updates)
+  // Switch to webhookCallback() for production webhook deployments
+  const runner = run(bot, {
+    runner: {
+      fetch: {
+        allowed_updates: [
+          "message",
+          "callback_query",
+          "inline_query",
+          "pre_checkout_query",
+          "shipping_query",
+          "my_chat_member",
+        ],
+        drop_pending_updates: env.NODE_ENV !== "production",
+      },
+    },
+  });
+
+  logger.info("Bot started (long polling)");
+
+  // Graceful shutdown — process.once prevents double-shutdown
+  const stop = async () => {
+    logger.info("Shutting down...");
+    if (runner.isRunning()) await runner.stop();
+    await redis.quit();
+    logger.info("Shutdown complete");
+    process.exit(0);
+  };
+
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
+}
+
+main().catch((err) => {
+  logger.fatal({ err }, "Fatal startup error");
+  process.exit(1);
+});

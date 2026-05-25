@@ -1,0 +1,184 @@
+/**
+ * templates/api-route-validator.ts
+ * Reusable request validation helper for Node.js API routes.
+ *
+ * Supports: Express 5, Fastify 5, Hono 4, and plain Node http.
+ * Pattern: safeParse at the boundary → typed data inside the handler.
+ *
+ * Usage:
+ *   1. Copy to src/shared/middleware/validate.ts
+ *   2. Use validateBody / validateQuery / validateParams in route handlers
+ */
+
+import { z } from "zod";
+import type { Request, Response, NextFunction } from "express"; // swap for your framework
+
+// ---------------------------------------------------------------------------
+// Generic validation result
+// ---------------------------------------------------------------------------
+
+export type ValidationSuccess<T> = { success: true; data: T };
+export type ValidationFailure = {
+  success: false;
+  status: 422;
+  body: {
+    status: "error";
+    code: "VALIDATION_ERROR";
+    details: Record<string, string[]>;
+    message: string;
+  };
+};
+export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure;
+
+function parseOrFail<T>(
+  schema: z.ZodType<T>,
+  input: unknown
+): ValidationResult<T> {
+  const result = schema.safeParse(input);
+
+  if (!result.success) {
+    return {
+      success: false,
+      status: 422,
+      body: {
+        status: "error",
+        code: "VALIDATION_ERROR",
+        details: result.error.flatten().fieldErrors as Record<string, string[]>,
+        message: "Request validation failed",
+      },
+    };
+  }
+
+  return { success: true, data: result.data };
+}
+
+// ---------------------------------------------------------------------------
+// Express middleware factories
+// ---------------------------------------------------------------------------
+
+/**
+ * Express middleware — validates req.body against schema.
+ * On success: attaches typed data to res.locals.validatedBody.
+ * On failure: responds 422 with fieldErrors.
+ *
+ * Usage:
+ *   router.post("/users", validateBody(CreateUserSchema), createUserHandler);
+ */
+export function validateBody<T>(schema: z.ZodType<T>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const result = parseOrFail(schema, req.body);
+    if (!result.success) {
+      return res.status(result.status).json(result.body);
+    }
+    res.locals.validatedBody = result.data;
+    next();
+  };
+}
+
+/**
+ * Express middleware — validates req.query.
+ * Coerce strings to types as needed in your schema (z.coerce.number(), etc.)
+ */
+export function validateQuery<T>(schema: z.ZodType<T>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const result = parseOrFail(schema, req.query);
+    if (!result.success) {
+      return res.status(result.status).json(result.body);
+    }
+    res.locals.validatedQuery = result.data;
+    next();
+  };
+}
+
+/**
+ * Express middleware — validates req.params.
+ */
+export function validateParams<T>(schema: z.ZodType<T>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const result = parseOrFail(schema, req.params);
+    if (!result.success) {
+      return res.status(result.status).json(result.body);
+    }
+    res.locals.validatedParams = result.data;
+    next();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Example: inline validation inside a handler (no middleware)
+// ---------------------------------------------------------------------------
+
+/**
+ * Alternative pattern: validate inline inside the handler.
+ * Simpler — no res.locals. Useful for Hono, Fastify, or tighter code.
+ *
+ * Usage:
+ *   const data = parseBodyOrThrow(CreateUserSchema, req.body, res);
+ *   if (!data) return; // 422 already sent
+ */
+export function parseBodyOrSend<T>(
+  schema: z.ZodType<T>,
+  body: unknown,
+  res: Response
+): T | null {
+  const result = parseOrFail(schema, body);
+  if (!result.success) {
+    res.status(result.status).json(result.body);
+    return null;
+  }
+  return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// Async variant — for schemas with async refinements
+// ---------------------------------------------------------------------------
+
+export async function parseBodyOrSendAsync<T>(
+  schema: z.ZodType<T>,
+  body: unknown,
+  res: Response
+): Promise<T | null> {
+  const safeResult = await schema.safeParseAsync(body);
+  if (!safeResult.success) {
+    res.status(422).json({
+      status: "error",
+      code: "VALIDATION_ERROR",
+      details: safeResult.error.flatten().fieldErrors,
+      message: "Request validation failed",
+    });
+    return null;
+  }
+  return safeResult.data;
+}
+
+// ---------------------------------------------------------------------------
+// Example usage
+// ---------------------------------------------------------------------------
+
+/*
+const CreateUserSchema = z.object({
+  name: z.string().min(1),
+  email: z.email(),
+  role: z.enum(["admin", "user"]).default("user"),
+});
+
+type CreateUserInput = z.infer<typeof CreateUserSchema>;
+
+// Pattern A: middleware
+router.post(
+  "/users",
+  validateBody(CreateUserSchema),
+  (req, res) => {
+    const data = res.locals.validatedBody as CreateUserInput;
+    // data is typed and validated
+    res.json({ created: data });
+  }
+);
+
+// Pattern B: inline
+router.post("/users", async (req, res) => {
+  const data = parseBodyOrSend(CreateUserSchema, req.body, res);
+  if (!data) return;  // 422 already sent
+  res.json({ created: data });
+});
+*/

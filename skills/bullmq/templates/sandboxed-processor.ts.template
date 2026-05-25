@@ -1,0 +1,117 @@
+// Sandboxed processor — CPU-bound work runs in worker_threads (lighter than child process).
+//
+// File layout:
+//   src/worker-entry.ts        (this file — spawns the BullMQ Worker)
+//   src/sandboxed/pdf-render.ts  (the actual job logic — runs in a thread)
+
+// ============================================================
+// src/worker-entry.ts
+// ============================================================
+import { Worker, type ConnectionOptions } from 'bullmq';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const connection: ConnectionOptions = {
+  host: process.env.REDIS_HOST ?? '127.0.0.1',
+  port: Number(process.env.REDIS_PORT ?? 6379),
+  password: process.env.REDIS_PASSWORD,
+  maxRetriesPerRequest: null,
+};
+
+// Resolve the processor file's URL (Windows-friendly)
+const processorPath = pathToFileURL(
+  path.join(import.meta.dirname, 'sandboxed', 'pdf-render.js'),
+);
+
+// useWorkerThreads: true — uses Node's worker_threads instead of child processes
+// Faster spawn, shared memory address space (per-thread V8 isolates).
+const worker = new Worker('pdf-render', processorPath, {
+  connection,
+  concurrency: 4,                   // 4 threads max
+  useWorkerThreads: true,
+  lockDuration: 5 * 60_000,         // PDF rendering can be slow
+  lockRenewTime: 60_000,
+});
+
+worker.on('completed', (job) => console.log(`[pdf] done ${job.id}`));
+worker.on('failed',    (job, err) => console.error(`[pdf] failed ${job?.id}`, err));
+worker.on('error',     (err) => console.error('[pdf] worker error', err));
+
+async function shutdown() {
+  await worker.close();
+  process.exit(0);
+}
+process.once('SIGTERM', shutdown);
+process.once('SIGINT',  shutdown);
+
+
+// ============================================================
+// src/sandboxed/pdf-render.ts
+// Runs in a worker thread — has its own event loop.
+// ============================================================
+import { type SandboxedJob } from 'bullmq';
+// import puppeteer from 'puppeteer';   // example: heavy lib
+
+interface PdfJobData {
+  url: string;
+  outputKey: string;
+}
+
+interface PdfResult {
+  size: number;
+  outputKey: string;
+}
+
+export default async function (job: SandboxedJob<PdfJobData, PdfResult>): Promise<PdfResult> {
+  await job.updateProgress(10);
+
+  // --- CPU-bound work happens here — does NOT block the main worker entry ---
+  // const browser = await puppeteer.launch();
+  // const page = await browser.newPage();
+  // await page.goto(job.data.url);
+  // const buffer = await page.pdf({ format: 'A4' });
+  // await browser.close();
+
+  // Placeholder:
+  await new Promise((r) => setTimeout(r, 1000));
+  const buffer = Buffer.alloc(1024 * 1024);   // 1 MB fake PDF
+
+  await job.updateProgress(60);
+
+  // Upload to S3 / R2 / disk (within the thread)
+  // await s3.putObject({ Bucket: 'pdfs', Key: job.data.outputKey, Body: buffer });
+
+  await job.updateProgress(100);
+  await job.log(`PDF generated for ${job.data.url}, size=${buffer.length}`);
+
+  return { size: buffer.length, outputKey: job.data.outputKey };
+}
+
+
+// ============================================================
+// Notes
+// ============================================================
+//
+// Trade-offs of useWorkerThreads vs child process:
+//
+// useWorkerThreads: true
+//   + Faster startup (~5ms vs ~30ms for child process)
+//   + Shared address space
+//   + Lower memory per concurrent job
+//   - Native module compatibility issues (some C++ addons not thread-safe)
+//   - V8 isolates per thread — still separate event loops
+//
+// Default (child process)
+//   + Full isolation; one crashed thread can't take down others
+//   + Better for libraries that aren't thread-safe (some Puppeteer drivers, ffmpeg bindings)
+//   - Higher per-job overhead
+//
+// API limits inside the sandboxed processor:
+//   - job.updateProgress, job.log, job.data, job.id, job.opts — all work
+//   - job.moveToFailed, job.moveToDelayed — limited / may not work
+//   - Returning resolves the job; throwing rejects it
+//
+// Build:
+//   - The processor file is loaded as JS (or compiled JS) at runtime.
+//   - If you use TypeScript: tsc the sandbox file, point pathToFileURL at the compiled .js
+//     OR use Node 24's --experimental-strip-types with `.ts` extension

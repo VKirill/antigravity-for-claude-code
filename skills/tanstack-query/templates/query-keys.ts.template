@@ -1,0 +1,78 @@
+/**
+ * TanStack Query 5 — Query Key Factory Pattern
+ *
+ * Copy this file to src/features/{{FEATURE_NAME}}/query-keys.ts
+ * Replace {{Feature}}, {{Feature}}Filters, and filter fields with your domain types.
+ *
+ * Placeholders:
+ *   {{Feature}}        — Pascal-case feature name (e.g., Post, User, Invoice)
+ *   {{feature}}        — camel-case feature name (e.g., post, user, invoice)
+ *   {{Feature}}Filters — Your filter type (status, userId, dateRange, etc.)
+ */
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface {{Feature}}Filters {
+  // Replace with actual filter fields
+  status?: 'active' | 'archived';
+  userId?: string;
+  page?: number;
+  limit?: number;
+}
+
+// ─── Key factory ─────────────────────────────────────────────────────────────
+
+/**
+ * Hierarchical query keys for the {{feature}} feature.
+ *
+ * Invalidation ladder (from broad to narrow):
+ *   {{feature}}Keys.all          → invalidates EVERYTHING in this feature
+ *   {{feature}}Keys.lists()      → invalidates all list variants
+ *   {{feature}}Keys.list(f)      → invalidates exactly this filtered list
+ *   {{feature}}Keys.details()    → invalidates all detail variants
+ *   {{feature}}Keys.detail(id)   → invalidates one item
+ */
+export const {{feature}}Keys = {
+  /** Root — use to invalidate all {{feature}} queries at once */
+  all: ['{{feature}}s'] as const,
+
+  /** List namespace — invalidates all list queries */
+  lists: () => [...{{feature}}Keys.all, 'list'] as const,
+
+  /** Specific filtered list — all filter params go here */
+  list: (filters: {{Feature}}Filters) =>
+    [...{{feature}}Keys.lists(), filters] as const,
+
+  /** Detail namespace — invalidates all detail queries */
+  details: () => [...{{feature}}Keys.all, 'detail'] as const,
+
+  /** Single item detail */
+  detail: (id: string) => [...{{feature}}Keys.details(), id] as const,
+
+  // ── Optional: nested resources ────────────────────────────────────────────
+
+  /** Comments on a {{feature}} item */
+  comments: ({{feature}}Id: string) =>
+    [...{{feature}}Keys.detail({{feature}}Id), 'comments'] as const,
+
+  /** Paginated infinite list */
+  infinite: (filters: Omit<{{Feature}}Filters, 'page'>) =>
+    [...{{feature}}Keys.lists(), 'infinite', filters] as const,
+} as const;
+
+// ─── Usage examples ───────────────────────────────────────────────────────────
+
+// import { {{feature}}Keys } from './query-keys';
+//
+// // In useQuery:
+// queryKey: {{feature}}Keys.detail(id)
+// queryKey: {{feature}}Keys.list({ status: 'active', userId })
+//
+// // Invalidate after create/update/delete:
+// queryClient.invalidateQueries({ queryKey: {{feature}}Keys.lists() })
+//
+// // Invalidate single item after update:
+// queryClient.invalidateQueries({ queryKey: {{feature}}Keys.detail(id) })
+//
+// // Invalidate everything after bulk operation:
+// queryClient.invalidateQueries({ queryKey: {{feature}}Keys.all })

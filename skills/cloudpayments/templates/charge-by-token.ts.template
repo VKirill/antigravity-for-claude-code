@@ -1,0 +1,88 @@
+// CloudPayments — server-side rebill by saved Token
+// Usage: scheduled job (cron / BullMQ) charges users with stored cpToken.
+
+import { z } from 'zod';
+
+const env = z.object({
+  CP_PUBLIC_ID: z.string().min(1),
+  CP_API_SECRET: z.string().min(20),
+}).parse(process.env);
+
+const basicAuth = 'Basic ' + Buffer.from(`${env.CP_PUBLIC_ID}:${env.CP_API_SECRET}`).toString('base64');
+
+interface ChargeByTokenArgs {
+  userId: string;
+  token: string;
+  amount: number;
+  description: string;
+  email?: string;
+  invoiceId: string;
+  customerReceipt?: object; // see customer-receipt.ts.template
+}
+
+export async function chargeByToken(args: ChargeByTokenArgs) {
+  const res = await fetch('https://api.cloudpayments.ru/payments/tokens/charge', {
+    method: 'POST',
+    headers: {
+      Authorization: basicAuth,
+      'Content-Type': 'application/json',
+      'X-Request-ID': crypto.randomUUID(),
+    },
+    body: JSON.stringify({
+      Amount: args.amount,
+      Currency: 'RUB',
+      AccountId: args.userId,
+      Token: args.token,
+      InvoiceId: args.invoiceId,
+      Description: args.description,
+      Email: args.email,
+      JsonData: args.customerReceipt
+        ? { CloudPayments: { CustomerReceipt: args.customerReceipt } }
+        : undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`CloudPayments token charge failed: HTTP ${res.status}`);
+  }
+
+  const body = await res.json() as {
+    Success: boolean;
+    Message: string | null;
+    Model?: {
+      TransactionId: number;
+      Status: 'Completed' | 'Authorized' | 'Declined';
+      StatusCode: number;
+      ReasonCode?: number;
+      Reason?: string;
+    };
+  };
+
+  if (!body.Success) {
+    // Surface to support — common: ExpiredCard (5054), InsufficientFunds (5051)
+    const reason = body.Model?.Reason ?? body.Message ?? 'unknown';
+    const code = body.Model?.ReasonCode ?? -1;
+    throw new Error(`CloudPayments declined: ${reason} (${code})`);
+  }
+
+  return body.Model!;
+}
+
+// Example usage in a BullMQ worker:
+//
+// const queue = new Queue('billing');
+// queue.add('charge-monthly', { userId }, { repeat: { every: 30 * 24 * 60 * 60 * 1000 } });
+//
+// new Worker('billing', async (job) => {
+//   const user = await db.user.findUnique({ where: { id: job.data.userId } });
+//   if (!user?.cpToken) return;
+//   const result = await chargeByToken({
+//     userId: user.id,
+//     token: user.cpToken,
+//     amount: user.subscription.amount,
+//     description: `Pro · ${monthLabel()}`,
+//     email: user.email,
+//     invoiceId: `sub-${user.id}-${monthKey()}`,
+//   });
+//   // Pay webhook arrives separately and finalizes the order
+// });

@@ -1,0 +1,77 @@
+# .gitignore — Node + TypeScript projects
+# Rename to .gitignore in your project root.
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Build output
+dist/
+build/
+out/
+.next/
+.nuxt/
+.output/
+.svelte-kit/
+.astro/
+.turbo/
+.vercel/
+.netlify/
+*.tsbuildinfo
+
+# Test + coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Lint + format caches
+.eslintcache
+.stylelintcache
+node_modules/.cache/
+.cache/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+secrets/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+
+# Misc
+*.tgz
+.npm
+.yarn-integrity
+.parcel-cache/
+.tsbuildcache/
+.fleet/
+
+# Local-only worktrees and stash
+.git-worktree/

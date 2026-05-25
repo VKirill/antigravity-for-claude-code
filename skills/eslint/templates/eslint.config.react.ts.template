@@ -1,0 +1,105 @@
+// eslint.config.ts — TypeScript + React + type-aware lint + Prettier coexistence
+// Drop into project root. Requires:
+//   npm i -D eslint @eslint/js typescript-eslint eslint-plugin-react eslint-plugin-react-hooks \
+//             eslint-plugin-jsx-a11y eslint-config-prettier globals
+
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import jsxA11y from "eslint-plugin-jsx-a11y";
+import prettier from "eslint-config-prettier";
+import globals from "globals";
+
+export default tseslint.config(
+  // 1. Global ignores
+  {
+    ignores: [
+      "dist/**",
+      "build/**",
+      ".next/**",
+      ".nuxt/**",
+      "coverage/**",
+      "node_modules/**",
+      "*.config.js",
+    ],
+  },
+
+  // 2. JS recommended
+  js.configs.recommended,
+
+  // 3. TS with type-aware rules
+  ...tseslint.configs.recommendedTypeChecked,
+
+  // 4. TS parser options (scoped)
+  {
+    files: ["**/*.{ts,tsx,cts,mts}"],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+  },
+
+  // 5. React + hooks + a11y (scoped to JSX/TSX)
+  {
+    files: ["**/*.{jsx,tsx}"],
+    plugins: {
+      react,
+      "react-hooks": reactHooks,
+      "jsx-a11y": jsxA11y,
+    },
+    languageOptions: {
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    settings: {
+      react: { version: "detect" },
+    },
+    rules: {
+      ...react.configs.recommended.rules,
+      ...reactHooks.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "off",
+      "react-hooks/exhaustive-deps": "error",
+    },
+  },
+
+  // 6. Project overrides
+  {
+    rules: {
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+      "no-debugger": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/consistent-type-imports": [
+        "error",
+        { prefer: "type-imports", fixStyle: "inline-type-imports" },
+      ],
+    },
+  },
+
+  // 7. Test files — relaxed
+  {
+    files: ["**/*.{test,spec}.{ts,tsx}", "**/__tests__/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "no-console": "off",
+    },
+  },
+
+  // 8. Prettier — MUST be last
+  prettier,
+);

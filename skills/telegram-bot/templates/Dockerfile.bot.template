@@ -1,0 +1,72 @@
+# Dockerfile.bot.template
+# Node 24 multi-stage build for a TypeScript grammY bot.
+# Non-root user, health check, minimal final image.
+#
+# Placeholders: {{ENTRYPOINT}} (e.g. dist/bot.js), {{APP_PORT}}
+#
+# Build:  docker build -t my-bot .
+# Run:    docker run --env-file .env my-bot
+# Compose: see examples/scaling-multi-instance.md for docker-compose.yml
+
+# ─── Stage 1: Dependencies ───────────────────────────────────────────────────
+
+FROM node:24-alpine AS deps
+
+WORKDIR /app
+
+# Copy package files first — Docker layer cache reuses this layer when
+# source changes but package.json/lock are unchanged
+COPY package.json package-lock.json ./
+
+# Install production + dev deps (dev needed for build step)
+RUN npm ci --frozen-lockfile
+
+# ─── Stage 2: Build ─────────────────────────────────────────────────────────
+
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Type-check + transpile TypeScript
+RUN npm run build
+# Resulting JS lands in ./dist/
+
+# ─── Stage 3: Production runner ─────────────────────────────────────────────
+
+FROM node:24-alpine AS runner
+
+WORKDIR /app
+
+# Install production-only dependencies from scratch (clean layer)
+COPY package.json package-lock.json ./
+RUN npm ci --frozen-lockfile --omit=dev && npm cache clean --force
+
+# Copy compiled output from builder
+COPY --from=builder /app/dist ./dist
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT={{APP_PORT}}
+
+# Create non-root user
+RUN addgroup --system --gid 1001 botgroup && \
+    adduser --system --uid 1001 --ingroup botgroup --no-create-home botuser
+
+# Own the workdir
+RUN chown -R botuser:botgroup /app
+
+USER botuser
+
+# Expose webhook port (omit for long-polling-only bots)
+EXPOSE {{APP_PORT}}
+
+# Health check — hits the /health endpoint added to the webhook server
+# Adjust for long-polling bots: check that the process is alive instead
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:{{APP_PORT}}/health || exit 1
+
+# Start the bot
+CMD ["node", "{{ENTRYPOINT}}"]

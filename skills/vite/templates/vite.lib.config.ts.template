@@ -1,0 +1,129 @@
+// vite.lib.config.ts — library mode preset for {{library_name}}
+// Produces: ES + CJS output, TypeScript declarations
+// Replace {{placeholders}} before use.
+
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react-swc'
+import dts from 'vite-plugin-dts'
+import path from 'node:path'
+
+// Remove the react() plugin if this is not a React library
+// Add @vitejs/plugin-vue for Vue, @sveltejs/vite-plugin-svelte for Svelte
+
+export default defineConfig({
+  plugins: [
+    react(),
+
+    // Generate TypeScript declarations
+    dts({
+      include: ['src'],
+      outDir: 'dist/types',
+      insertTypesEntry: true,
+      rollupTypes: true,          // Produce single index.d.ts (recommended for libs)
+      tsconfigPath: './tsconfig.build.json',
+    }),
+  ],
+
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
+
+  build: {
+    lib: {
+      // Library entry point — export everything public here
+      entry: path.resolve(__dirname, 'src/index.ts'),
+
+      // UMD global name (only matters for UMD format — safe to set even for ES/CJS)
+      name: '{{LibraryName}}',
+
+      // Output filename pattern
+      fileName: (format) => {
+        if (format === 'es') return '{{library_name}}.mjs'
+        if (format === 'cjs') return '{{library_name}}.cjs'
+        return `{{library_name}}.${format}.js`
+      },
+
+      // Output formats: 'es' + 'cjs' is the 2026 standard for published libs
+      // Add 'umd' only if you need direct <script> tag support
+      formats: ['es', 'cjs'],
+    },
+
+    rollupOptions: {
+      // CRITICAL: externalize all peer dependencies
+      // These must also be in peerDependencies in package.json
+      external: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        // Add more peer deps:
+        // 'vue',
+        // 'svelte',
+        // /^react\//,   // Regex for deep imports
+      ],
+
+      output: {
+        // UMD global variable mapping for externalized deps
+        globals: {
+          react: 'React',
+          'react-dom': 'ReactDOM',
+          'react/jsx-runtime': 'ReactJSXRuntime',
+        },
+
+        // CSS output (if any CSS is imported in your library)
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name?.endsWith('.css')) return 'style.css'
+          return assetInfo.name ?? '[name][extname]'
+        },
+      },
+    },
+
+    // Clear dist before each build
+    emptyOutDir: true,
+
+    // Sourcemaps for published libs help consumers debug
+    sourcemap: true,
+
+    // Skip size warning for libs — consumers tree-shake anyway
+    reportCompressedSize: false,
+  },
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Required package.json fields (add these to your package.json):
+//
+// {
+//   "name": "{{library_name}}",
+//   "version": "0.1.0",
+//   "type": "module",
+//   "main": "./dist/{{library_name}}.cjs",
+//   "module": "./dist/{{library_name}}.mjs",
+//   "types": "./dist/types/index.d.ts",
+//   "exports": {
+//     ".": {
+//       "import": {
+//         "types": "./dist/types/index.d.ts",
+//         "default": "./dist/{{library_name}}.mjs"
+//       },
+//       "require": {
+//         "types": "./dist/types/index.d.ts",
+//         "default": "./dist/{{library_name}}.cjs"
+//       }
+//     }
+//   },
+//   "files": ["dist"],
+//   "sideEffects": false,
+//   "peerDependencies": {
+//     "react": ">=18.0.0",
+//     "react-dom": ">=18.0.0"
+//   },
+//   "devDependencies": {
+//     "react": "^19.0.0",
+//     "react-dom": "^19.0.0",
+//     "vite": "^7.0.0",
+//     "vite-plugin-dts": "^4.0.0",
+//     "@vitejs/plugin-react-swc": "^3.0.0"
+//   }
+// }
+// ─────────────────────────────────────────────────────────────────────────────

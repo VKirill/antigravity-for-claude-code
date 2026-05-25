@@ -1,0 +1,77 @@
+// CloudPayments webhook receiver — Express 5 + TypeScript
+//
+// IMPORTANT: express.raw() before any express.json() middleware so we keep the raw Buffer
+// for HMAC verification.
+
+import express from 'express';
+import crypto from 'node:crypto';
+import { z } from 'zod';
+
+const env = z.object({
+  CP_API_SECRET: z.string().min(20),
+  PORT: z.coerce.number().default(3000),
+}).parse(process.env);
+
+const app = express();
+
+function verifyHmac(rawBody: Buffer, headerHmac: string | undefined): boolean {
+  if (!headerHmac) return false;
+  const expected = crypto
+    .createHmac('sha256', env.CP_API_SECRET)
+    .update(rawBody)
+    .digest('base64');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(headerHmac);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+// Capture raw body ONLY for CP webhook routes; let other routes use express.json()
+app.use('/webhooks/cp', express.raw({ type: '*/*' }));
+
+function parsePayload(rawBody: Buffer): Record<string, string> {
+  const text = rawBody.toString('utf8');
+  if (text.trim().startsWith('{')) return JSON.parse(text);
+  return Object.fromEntries(new URLSearchParams(text));
+}
+
+const PayPayload = z.object({
+  TransactionId: z.coerce.number().int().positive(),
+  Amount: z.coerce.number().positive(),
+  Currency: z.literal('RUB'),
+  InvoiceId: z.string().min(1),
+  Status: z.enum(['Completed', 'Authorized']),
+  Token: z.string().optional(),
+  CardLastFour: z.string().length(4).optional(),
+});
+
+app.post('/webhooks/cp/pay', (req, res) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.get('Content-HMAC') ?? req.get('X-Content-HMAC'))) {
+    return res.status(401).json({ code: 13 });
+  }
+
+  const parsed = PayPayload.safeParse(parsePayload(rawBody));
+  if (!parsed.success) {
+    console.warn('invalid Pay payload', parsed.error);
+    return res.status(200).json({ code: 0 });
+  }
+  const p = parsed.data;
+
+  // {{TODO}}: idempotent order update, queue fulfillment
+  console.log('pay received', { TransactionId: p.TransactionId, InvoiceId: p.InvoiceId });
+  return res.status(200).json({ code: 0 });
+});
+
+app.post('/webhooks/cp/check', (req, res) => {
+  const rawBody = req.body as Buffer;
+  if (!verifyHmac(rawBody, req.get('Content-HMAC') ?? req.get('X-Content-HMAC'))) {
+    return res.status(401).json({ code: 13 });
+  }
+  // {{TODO}}: validate order before allowing charge
+  return res.status(200).json({ code: 0 });
+});
+
+// Add /fail, /refund, /recurrent the same way.
+
+app.listen(env.PORT, () => console.log(`listening on :${env.PORT}`));

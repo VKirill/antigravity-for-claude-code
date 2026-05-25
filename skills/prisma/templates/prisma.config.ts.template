@@ -1,0 +1,34 @@
+// prisma.config.ts — Prisma 7 configuration file.
+// Reads DATABASE_URL (and friends) from env. Wires migrations + seed.
+//
+// NOTE: in Prisma 7 the package is `prisma/config` (NOT `@prisma/config`).
+// Source: https://github.com/prisma/prisma — README + sandbox/basic-postgres
+// Verified 2026-05-15 against Prisma 7.6.x.
+
+import { defineConfig, env } from 'prisma/config';
+import 'dotenv/config';
+
+type Env = {
+  DATABASE_URL: string;
+  SHADOW_DATABASE_URL?: string;
+};
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+
+  datasource: {
+    url: env<Env>('DATABASE_URL'),
+    // Used by `prisma migrate dev` to detect drift safely.
+    // Set this if your prod DB is managed (Neon, RDS) and you can't create databases dynamically.
+    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
+  },
+
+  migrations: {
+    path: 'prisma/migrations',
+    // Seed command — runs on `prisma db seed` and after `prisma migrate reset`
+    seed: 'tsx prisma/seed.ts',
+  },
+
+  // typedSql: { path: 'prisma/sql' },
+  // views: { path: 'prisma/views' },
+});

@@ -1,0 +1,101 @@
+// Repeating / cron jobs via BullMQ 5 Job Schedulers.
+// Idempotent — call on app boot to register all schedulers.
+// Source pattern: https://docs.bullmq.io/guide/job-schedulers
+//
+// API surface (canonical): Job Schedulers are upserted on the Queue itself —
+//   queue.upsertJobScheduler(schedulerId, repeatOpts, jobTemplate?)
+//   queue.getJobSchedulers()
+//   queue.removeJobScheduler(schedulerId)
+// There is no `new JobScheduler(...)` instantiation; that was an old mental model.
+
+import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq';
+import { z } from 'zod';
+
+const connection: ConnectionOptions = {
+  host: process.env.REDIS_HOST ?? '127.0.0.1',
+  port: Number(process.env.REDIS_PORT ?? 6379),
+  password: process.env.REDIS_PASSWORD,
+  maxRetriesPerRequest: null,
+};
+
+const reportsQueue = new Queue('reports', { connection });
+
+// --- Job payload schema ---
+const ReportJob = z.object({
+  kind: z.enum(['daily', 'weekly', 'monthly']),
+  scheduledFor: z.string().datetime(),
+});
+type ReportJob = z.infer<typeof ReportJob>;
+
+// --- Worker ---
+new Worker<ReportJob>(
+  'reports',
+  async (job: Job<ReportJob>) => {
+    const data = ReportJob.parse(job.data);
+    console.log(`[reports] generating ${data.kind} report for ${data.scheduledFor}`);
+    // ... compute and email report
+    return { generated: true };
+  },
+  {
+    connection,
+    concurrency: 5,
+    lockDuration: 5 * 60_000,         // reports may take a few minutes
+    lockRenewTime: 60_000,
+  },
+);
+
+// --- Schedulers — set up cron triggers on the Queue ---
+async function registerSchedulers() {
+  // Daily at 08:00 Moscow time
+  await reportsQueue.upsertJobScheduler(
+    'daily-report',                                        // schedulerId (idempotency key)
+    { pattern: '0 8 * * *', tz: 'Europe/Moscow' },         // repeat opts
+    {                                                       // job template applied to every produced job
+      name: 'send-daily',
+      data: { kind: 'daily', scheduledFor: new Date().toISOString() },
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5_000 },
+        removeOnComplete: { age: 7 * 24 * 3600, count: 100 },
+        removeOnFail: { age: 30 * 24 * 3600 },
+      },
+    },
+  );
+
+  // Every Monday at 09:00 Moscow
+  await reportsQueue.upsertJobScheduler(
+    'weekly-report',
+    { pattern: '0 9 * * 1', tz: 'Europe/Moscow' },
+    {
+      name: 'send-weekly',
+      data: { kind: 'weekly', scheduledFor: new Date().toISOString() },
+      opts: { attempts: 3 },
+    },
+  );
+
+  // Every 5 minutes — health probe
+  await reportsQueue.upsertJobScheduler(
+    'health-probe',
+    { every: 5 * 60_000 },
+    {
+      name: 'health',
+      data: { kind: 'daily', scheduledFor: new Date().toISOString() },
+      opts: { attempts: 1, removeOnComplete: { age: 600, count: 50 } },
+    },
+  );
+
+  console.log('schedulers registered');
+}
+
+registerSchedulers().catch((err) => {
+  console.error('failed to register schedulers', err);
+  process.exit(1);
+});
+
+// --- Listing / removing ---
+//
+// await reportsQueue.getJobSchedulers();          // list all
+// await reportsQueue.removeJobScheduler('weekly-report');
+//
+// Schedulers are persisted in Redis. Calling upsertJobScheduler with the same id
+// updates the pattern/data/template without duplicating.

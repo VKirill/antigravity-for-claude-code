@@ -1,0 +1,181 @@
+/* globals.css — Tailwind 4 production template
+ *
+ * {{project_name}} — global styles
+ *
+ * Placeholders:
+ *   {{brand_hue}}        — oklch hue angle for brand color (0–360). e.g., 250 = blue-purple
+ *   {{font_sans}}        — primary body font stack. e.g., "Inter", system-ui, sans-serif
+ *   {{font_display}}     — heading font stack. e.g., "Cal Sans", "Inter", sans-serif
+ *   {{font_mono}}        — monospace font. e.g., "JetBrains Mono", monospace
+ *   {{base_radius}}      — base border radius in rem. e.g., 0.5rem
+ *
+ * Usage:
+ *   1. Replace all {{placeholders}} with your values
+ *   2. Adjust oklch chroma (0.20) and hue to match your brand
+ *   3. Import in your entry file: import "./globals.css"
+ */
+
+@import "tailwindcss";
+
+/* ============================================================
+   Optional plugins — uncomment as needed
+   ============================================================ */
+/* @plugin "@tailwindcss/typography"; */
+/* @plugin "@tailwindcss/forms"; */
+
+/* ============================================================
+   Design tokens
+   ============================================================ */
+@theme {
+  /* --- Colors: brand scale (oklch for perceptual uniformity) --- */
+  --color-brand-50:  oklch(97% 0.02 {{brand_hue}});
+  --color-brand-100: oklch(93% 0.05 {{brand_hue}});
+  --color-brand-200: oklch(87% 0.09 {{brand_hue}});
+  --color-brand-300: oklch(80% 0.13 {{brand_hue}});
+  --color-brand-400: oklch(72% 0.17 {{brand_hue}});
+  --color-brand-500: oklch(60% 0.20 {{brand_hue}});   /* primary */
+  --color-brand-600: oklch(51% 0.19 {{brand_hue}});
+  --color-brand-700: oklch(42% 0.16 {{brand_hue}});
+  --color-brand-800: oklch(33% 0.13 {{brand_hue}});
+  --color-brand-900: oklch(24% 0.09 {{brand_hue}});
+  --color-brand-950: oklch(16% 0.06 {{brand_hue}});
+
+  /* --- Colors: semantic (light mode defaults) --- */
+  --color-background:    oklch(100% 0 0);
+  --color-foreground:    oklch(10%  0 0);
+  --color-card:          oklch(100% 0 0);
+  --color-card-fg:       oklch(10%  0 0);
+  --color-muted:         oklch(96%  0 0);
+  --color-muted-fg:      oklch(46%  0 0);
+  --color-border:        oklch(90%  0 0);
+  --color-input:         oklch(90%  0 0);
+  --color-ring:          oklch(60% 0.20 {{brand_hue}});
+  --color-primary:       oklch(60% 0.20 {{brand_hue}});
+  --color-primary-fg:    oklch(100% 0 0);
+  --color-secondary:     oklch(96%  0 0);
+  --color-secondary-fg:  oklch(10%  0 0);
+  --color-destructive:   oklch(55% 0.22 25);
+  --color-destructive-fg: oklch(100% 0 0);
+  --color-success:       oklch(60% 0.18 145);
+  --color-success-fg:    oklch(100% 0 0);
+
+  /* --- Typography --- */
+  --font-sans:    {{font_sans}};
+  --font-display: {{font_display}};
+  --font-mono:    {{font_mono}};
+
+  /* --- Border radius --- */
+  --radius-sm:   calc({{base_radius}} - 0.25rem);
+  --radius:      {{base_radius}};
+  --radius-md:   {{base_radius}};
+  --radius-lg:   calc({{base_radius}} + 0.25rem);
+  --radius-xl:   calc({{base_radius}} + 0.5rem);
+  --radius-2xl:  calc({{base_radius}} + 0.75rem);
+  --radius-card: {{base_radius}};
+
+  /* --- Shadows --- */
+  --shadow-xs:   0 1px 2px oklch(0% 0 0 / 0.05);
+  --shadow-sm:   0 2px 4px -1px oklch(0% 0 0 / 0.08);
+  --shadow-md:   0 4px 8px -2px oklch(0% 0 0 / 0.10);
+  --shadow-lg:   0 8px 16px -4px oklch(0% 0 0 / 0.12);
+  --shadow-xl:   0 16px 32px -8px oklch(0% 0 0 / 0.14);
+
+  /* --- Custom spacing --- */
+  --spacing-18:  4.5rem;
+  --spacing-22:  5.5rem;
+  --spacing-88:  22rem;
+  --spacing-128: 32rem;
+}
+
+/* ============================================================
+   Dark mode variant (class strategy)
+   Toggle by adding .dark to <html> or <body>
+   ============================================================ */
+@variant dark (&:is(.dark *));
+
+/* ============================================================
+   Dark mode tokens
+   Override semantic tokens for dark backgrounds
+   ============================================================ */
+.dark {
+  --color-background:    oklch(10%  0 0);
+  --color-foreground:    oklch(98%  0 0);
+  --color-card:          oklch(13%  0 0);
+  --color-card-fg:       oklch(98%  0 0);
+  --color-muted:         oklch(16%  0 0);
+  --color-muted-fg:      oklch(64%  0 0);
+  --color-border:        oklch(22%  0 0);
+  --color-input:         oklch(22%  0 0);
+  --color-ring:          oklch(72% 0.17 {{brand_hue}});
+  --color-primary:       oklch(72% 0.17 {{brand_hue}});   /* lighter for dark bg */
+  --color-primary-fg:    oklch(10%  0 0);
+  --color-secondary:     oklch(20%  0 0);
+  --color-secondary-fg:  oklch(90%  0 0);
+  --color-destructive:   oklch(60% 0.22 25);
+  --color-destructive-fg: oklch(100% 0 0);
+}
+
+/* ============================================================
+   Base styles
+   ============================================================ */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    min-height: 100dvh;
+  }
+
+  /* Focus ring — visible only for keyboard navigation */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* ============================================================
+   Custom utilities
+   ============================================================ */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+@utility truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@utility truncate-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+@utility text-pretty {
+  text-wrap: pretty;
+}
+
+@utility animate-in-fade {
+  opacity: 1;
+  transition: opacity 150ms ease;
+  starting: opacity: 0;
+}

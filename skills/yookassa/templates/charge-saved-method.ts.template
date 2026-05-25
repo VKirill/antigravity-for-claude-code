@@ -1,0 +1,88 @@
+// YooKassa — rebill a saved payment method (server-driven, no customer interaction).
+//
+// Usage: scheduled job (cron / BullMQ) charges subscribers with stored payment_method_id.
+
+import { YooCheckout } from '@a2seven/yoo-checkout';
+import { buildReceipt } from './receipt'; // see receipt.ts.template
+
+const checkout = new YooCheckout({
+  shopId: process.env.YOOKASSA_SHOP_ID!,
+  secretKey: process.env.YOOKASSA_SECRET_KEY!,
+});
+
+interface ChargeArgs {
+  userId: string;
+  subscriptionId: string;
+  paymentMethodId: string;
+  amount: number;        // RUB
+  description: string;
+  customerEmail: string;
+  /** Stable per-cycle key so retries reuse the same idempotency. */
+  cycleKey: string;       // e.g. "2026-06"
+}
+
+export async function chargeSavedMethod(args: ChargeArgs) {
+  const idempotenceKey = `sub-${args.subscriptionId}-cycle-${args.cycleKey}`;
+
+  const payment = await checkout.createPayment({
+    amount: { value: args.amount.toFixed(2), currency: 'RUB' },
+    capture: true,
+    payment_method_id: args.paymentMethodId,
+    description: args.description,
+    metadata: {
+      user_id: args.userId,
+      subscription_id: args.subscriptionId,
+      cycle: args.cycleKey,
+    },
+    receipt: buildReceipt({
+      items: [{
+        description: args.description,
+        quantity: 1,
+        amount: args.amount,
+        vatCode: 1,
+        paymentSubject: 'service',
+        paymentMode: 'full_payment',
+      }],
+      customer: { email: args.customerEmail },
+      taxSystemCode: 2,
+    }),
+  }, idempotenceKey);
+
+  // payment.status is 'pending' initially — webhook will deliver 'succeeded' or 'canceled'
+  return { paymentId: payment.id, status: payment.status, idempotenceKey };
+}
+
+// Example BullMQ worker:
+//
+// new Worker('billing', async (job) => {
+//   if (job.name !== 'billing.charge') return;
+//   const { subscriptionId } = job.data;
+//
+//   const sub = await db.subscription.findUniqueOrThrow({
+//     where: { id: subscriptionId },
+//     include: { user: true },
+//   });
+//   if (sub.status !== 'active' || !sub.yookassaMethodId) return;
+//
+//   const cycleKey = `${sub.nextChargeAt.getUTCFullYear()}-${String(sub.nextChargeAt.getUTCMonth() + 1).padStart(2, '0')}`;
+//
+//   const result = await chargeSavedMethod({
+//     userId: sub.user.id,
+//     subscriptionId: sub.id,
+//     paymentMethodId: sub.yookassaMethodId,
+//     amount: Number(sub.amount),
+//     description: `Подписка Pro · ${cycleKey}`,
+//     customerEmail: sub.user.email,
+//     cycleKey,
+//   });
+//
+//   await db.payment.create({
+//     data: {
+//       subscriptionId: sub.id,
+//       yookassaId: result.paymentId,
+//       idempotenceKey: result.idempotenceKey,
+//       status: 'pending',
+//       amount: sub.amount,
+//     },
+//   });
+// }, { connection: redis });

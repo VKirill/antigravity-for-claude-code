@@ -1,0 +1,43 @@
+#!/bin/sh
+# Native git pre-commit hook
+# Install: copy to .git/hooks/pre-commit (or .githooks/pre-commit + `git config core.hooksPath .githooks`)
+# Make executable: chmod +x .git/hooks/pre-commit
+
+set -e
+
+# Bail early if no staged files
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$STAGED" ] && exit 0
+
+# 1. Block AWS keys, GitHub tokens etc.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --no-banner || {
+    echo "✖ Secrets detected — aborting commit"
+    exit 1
+  }
+fi
+
+# 2. Lint JS/TS files
+JS_TS=$(echo "$STAGED" | grep -E '\.(js|jsx|ts|tsx|vue)$' || true)
+if [ -n "$JS_TS" ]; then
+  echo "▸ ESLint on staged files"
+  echo "$JS_TS" | xargs npx eslint --fix --max-warnings 0
+  # Re-stage files that eslint --fix modified
+  echo "$JS_TS" | xargs git add
+fi
+
+# 3. Format JSON/Markdown/CSS
+FORMAT=$(echo "$STAGED" | grep -E '\.(json|md|yml|yaml|css|scss)$' || true)
+if [ -n "$FORMAT" ]; then
+  echo "▸ Prettier on staged files"
+  echo "$FORMAT" | xargs npx prettier --write
+  echo "$FORMAT" | xargs git add
+fi
+
+# 4. Type-check (whole project — fast with incremental)
+if [ -f tsconfig.json ] && [ -n "$JS_TS" ]; then
+  echo "▸ TypeScript noEmit"
+  npx tsc --noEmit
+fi
+
+echo "✓ Pre-commit checks passed"

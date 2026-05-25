@@ -1,0 +1,191 @@
+/* ============================================================
+ * Sentry init — Backend (Node) and Frontend (browser) versions.
+ * Adjust DSN, release, sample rates per project.
+ *
+ * Templates below for:
+ *   1. Node.js (backend) — instrument.ts loaded FIRST
+ *   2. React (frontend) — sentry.ts loaded in entry point
+ *   3. FastAPI / Python — sentry_setup.py imported in app entry
+ *   4. Build pipeline — uploading source maps + finalising release
+ * ============================================================ */
+
+// ============================================================
+// 1. Node.js backend — instrument.ts
+// ============================================================
+// IMPORTANT: this file MUST be imported FIRST in your app entry
+// (before express / fastify / database clients / anything).
+
+import * as Sentry from '@sentry/node';
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV ?? 'development',
+  release: process.env.SERVICE_VERSION ?? process.env.GIT_SHA,
+
+  // Performance
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  profilesSampleRate: 0.1,
+
+  // PII strictness
+  sendDefaultPii: false,
+  integrations: [
+    nodeProfilingIntegration(),
+    // Don't enable HTTP / Express / Fastify integrations that capture headers
+    // unless you trust beforeSend to scrub.
+  ],
+
+  // Scrub before send
+  beforeSend(event, hint) {
+    // Strip sensitive headers
+    if (event.request?.headers) {
+      delete event.request.headers.authorization;
+      delete event.request.headers.cookie;
+      delete event.request.headers['x-api-key'];
+    }
+    // Strip sensitive body fields
+    if (event.request?.data && typeof event.request.data === 'object') {
+      const data = event.request.data as Record<string, unknown>;
+      ['password', 'token', 'apiKey', 'secret', 'cvv', 'creditCard'].forEach((k) => {
+        if (k in data) data[k] = '[REDACTED]';
+      });
+    }
+    return event;
+  },
+
+  // Filter known-noisy errors before they cost a quota slot
+  ignoreErrors: [
+    'NetworkError',
+    'AbortError',  // common when user navigates away mid-request
+  ],
+});
+
+// Then in your app entry:
+//   import './instrument.js';
+//   import express from 'express';
+//   ...
+
+// ============================================================
+// 2. React frontend — src/sentry.ts
+// ============================================================
+
+import * as SentryBrowser from '@sentry/browser';
+import { BrowserTracing } from '@sentry/browser';
+// import { browserTracingIntegration, replayIntegration } from '@sentry/browser';
+
+SentryBrowser.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  environment: import.meta.env.MODE,
+  release: import.meta.env.VITE_RELEASE,
+
+  integrations: [
+    // browserTracingIntegration(),
+    // replayIntegration({ maskAllText: true, blockAllMedia: true }),  // PII-safe
+  ],
+
+  tracesSampleRate: 0.1,
+  replaysSessionSampleRate: 0,        // off — high cost
+  replaysOnErrorSampleRate: 1.0,      // 100% for errors
+
+  sendDefaultPii: false,
+  beforeSend(event) {
+    // Strip user-controlled URL fragments (might contain tokens)
+    if (event.request?.url) {
+      event.request.url = event.request.url.replace(/access_token=[^&]+/g, 'access_token=[REDACTED]');
+    }
+    return event;
+  },
+
+  ignoreErrors: [
+    'ResizeObserver loop limit exceeded',
+    'Non-Error promise rejection captured',
+    /^Network request failed$/,
+  ],
+});
+
+// Identify user — ID only, never email/name unless legally cleared
+export function identifyUser(id: string) {
+  SentryBrowser.setUser({ id });
+}
+export function clearUser() {
+  SentryBrowser.setUser(null);
+}
+
+// Custom error boundary integration:
+// import { ErrorBoundary } from '@sentry/react';
+// <ErrorBoundary fallback={<ErrorUI/>}>
+//   <App />
+// </ErrorBoundary>
+
+// ============================================================
+// 3. FastAPI / Python — sentry_setup.py
+// ============================================================
+
+// # Import in app entry BEFORE creating FastAPI() instance
+//
+// import os
+// import sentry_sdk
+// from sentry_sdk.integrations.fastapi import FastApiIntegration
+// from sentry_sdk.integrations.starlette import StarletteIntegration
+// from sentry_sdk.integrations.logging import LoggingIntegration
+// import logging
+//
+// def scrub_event(event, hint):
+//     # Strip sensitive headers
+//     if 'request' in event and 'headers' in event['request']:
+//         for h in ('authorization', 'cookie', 'x-api-key'):
+//             event['request']['headers'].pop(h, None)
+//     # Strip body fields
+//     if 'request' in event and 'data' in event['request']:
+//         data = event['request']['data']
+//         if isinstance(data, dict):
+//             for k in ('password', 'token', 'api_key', 'secret', 'cvv'):
+//                 if k in data:
+//                     data[k] = '[REDACTED]'
+//     return event
+//
+// sentry_sdk.init(
+//     dsn=os.environ.get('SENTRY_DSN'),
+//     environment=os.environ.get('APP_ENV', 'development'),
+//     release=os.environ.get('SERVICE_VERSION'),
+//     traces_sample_rate=0.1,
+//     profiles_sample_rate=0.1,
+//     send_default_pii=False,
+//     integrations=[
+//         FastApiIntegration(),
+//         StarletteIntegration(),
+//         LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+//     ],
+//     before_send=scrub_event,
+//     ignore_errors=[
+//         'asyncio.CancelledError',
+//         'KeyboardInterrupt',
+//     ],
+// )
+
+// ============================================================
+// 4. Build pipeline — upload source maps + finalise release
+// ============================================================
+
+// #!/usr/bin/env bash
+// set -e
+//
+// export VERSION="${SERVICE_NAME:-app}@$(git rev-parse --short HEAD)"
+// echo "Release: $VERSION"
+//
+// # Build app
+// npm run build  # or 'next build', 'vite build', etc.
+//
+// # Sentry CLI must be installed: npm install -g @sentry/cli
+// # Token / org / project usually configured via env: SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT
+//
+// sentry-cli releases new "$VERSION"
+// sentry-cli releases set-commits "$VERSION" --auto
+// sentry-cli sourcemaps upload --release "$VERSION" --url-prefix "~/assets" dist/assets
+// sentry-cli releases finalize "$VERSION"
+//
+// # Delete source maps from public dist before deploy
+// find dist -name '*.map' -delete
+//
+// # Pass version to app via env so SDK can tag events
+// echo "SERVICE_VERSION=$VERSION" >> .env.production

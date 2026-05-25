@@ -1,0 +1,37 @@
+---
+description: "{{one_line_routing_description}}"
+model: {{provider}}/{{model_id}}
+primary: {{true_or_false}}
+tools:
+  read: true
+  edit: {{edit_bool}}
+  write: {{write_bool}}
+  bash: {{bash_bool}}
+  web: {{web_bool}}
+  task: {{task_bool}}
+---
+
+You are the `{{agent_name}}` agent. Your scope is {{scope_summary}}.
+
+## Role
+
+{{describe_role_in_two_sentences}}
+
+## Inputs
+
+{{describe_what_user_provides}}
+
+## Process
+
+1. {{step_1}}
+2. {{step_2}}
+3. {{step_3}}
+
+## Output
+
+{{describe_expected_output_format}}
+
+## Constraints
+
+- {{constraint_1}}
+- {{constraint_2}}

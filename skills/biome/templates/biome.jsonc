@@ -1,0 +1,124 @@
+{
+  // Schema URL must match installed @biomejs/biome version
+  // Update after: npm install @biomejs/biome@latest
+  "$schema": "https://biomejs.dev/schemas/2.4.0/schema.json",
+
+  // VCS integration: respects .gitignore, enables --changed flag in CI
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",        // Only "git" is supported
+    "useIgnoreFile": true,      // Read .gitignore — ALWAYS enable this
+    "defaultBranch": "main"     // Used by: biome ci --changed --since=main
+  },
+
+  // Files to ignore across ALL Biome operations (lint + format + organize imports)
+  "files": {
+    "ignoreUnknown": false,     // Warn on unsupported extensions (set true to silence)
+    "ignore": [
+      "dist",
+      "build",
+      "node_modules",
+      ".next",
+      ".nuxt",
+      "coverage",
+      "**/*.min.js",
+      "**/*.generated.ts",      // Generated files should not be linted
+      "**/*.generated.js"
+    ]
+  },
+
+  // Global formatter settings (apply to all languages unless overridden)
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",     // "space" | "tab"
+    "indentWidth": 2,           // 2 recommended; 4 for legacy codebases
+    "lineWidth": 100,           // 80 (Prettier default) or 100 (modern standard)
+    "lineEnding": "lf"          // Always "lf" — prevents Windows line ending churn
+  },
+
+  // Import sorting: built-ins → external → relative, then alphabetical
+  // Runs as part of: biome check --write
+  "organizeImports": {
+    "enabled": true
+  },
+
+  // Linter configuration
+  "linter": {
+    "enabled": true,
+    "rules": {
+      // ~150 curated safe rules — recommended starting point
+      "recommended": true,
+
+      // Override recommended rules or add non-recommended ones
+      "correctness": {
+        "noUnusedVariables": "error",   // Promoted from warn to error
+        "noUnusedImports": "error"      // Promoted from warn to error
+      },
+      "suspicious": {
+        "noExplicitAny": "warn"         // Warn (not error) — gradual adoption
+      },
+      "style": {
+        "useConst": "error",            // Always use const when possible
+        "noVar": "error"                // var is forbidden
+      },
+      "performance": {
+        "noAccumulatingSpread": "warn"  // Spread inside loops → O(n²)
+      }
+      // Enable nursery rules explicitly (they may have false positives):
+      // "nursery": {
+      //   "noSecrets": "warn",          // Detect hardcoded secrets
+      //   "noProcessEnv": "warn"        // Discourage raw process.env access
+      // }
+    }
+    // Ignore specific paths from linting (not formatting):
+    // "ignore": ["src/generated/**"]
+  },
+
+  // JavaScript/TypeScript-specific formatter settings
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",         // "double" (Biome default) | "single"
+      "jsxQuoteStyle": "double",      // JSX attribute quotes
+      "trailingCommas": "all",        // "all" | "es5" | "none"
+      "semicolons": "always",         // "always" | "asNeeded"
+      "arrowParentheses": "always"    // Arrow function params: (x) => vs x =>
+    }
+    // Declare globals to suppress noUndeclaredVariables for known names:
+    // "globals": ["__dirname", "__filename", "MY_GLOBAL"]
+  },
+
+  // JSON-specific formatter
+  "json": {
+    "formatter": {
+      "trailingCommas": "none"        // JSON spec: no trailing commas
+    }
+    // To enable JSONC parsing for .json files:
+    // "parser": { "allowComments": true, "allowTrailingCommas": true }
+  },
+
+  // CSS-specific settings (Biome 2 CSS linting is partial)
+  // "css": {
+  //   "formatter": { "quoteStyle": "double" },
+  //   "linter": { "enabled": true }
+  // },
+
+  // Per-file-pattern overrides — applied in order, last match wins per key
+  "overrides": [
+    {
+      // Test files: allow any, disable strict rules
+      "include": ["*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+    // Example: different indent for legacy JS files
+    // {
+    //   "include": ["legacy/**/*.js"],
+    //   "formatter": { "indentWidth": 4 }
+    // }
+  ]
+}

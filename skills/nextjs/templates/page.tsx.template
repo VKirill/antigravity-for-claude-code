@@ -1,0 +1,60 @@
+// templates/page.tsx — Next.js 16 App Router page template
+// Placeholders: {{SEGMENT_NAME}}, {{PARAM_NAME}}, {{DATA_FUNCTION}}, {{CACHE_TAG}}, {{CACHE_PROFILE}}
+
+import { Suspense } from 'react'
+import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
+import { {{DATA_FUNCTION}} } from '@/lib/data'
+import { {{SEGMENT_NAME}}Skeleton } from './{{SEGMENT_NAME}}Skeleton'
+
+// ── Optional: PPR for this route ─────────────────────────────────────────────
+// export const experimental_ppr = true
+
+// ── Metadata (static or dynamic) ─────────────────────────────────────────────
+type Props = {
+  params: Promise<{ {{PARAM_NAME}}: string }>
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { {{PARAM_NAME}} } = await params
+  const item = await {{DATA_FUNCTION}}({{PARAM_NAME}})
+  if (!item) return { title: 'Not Found' }
+  return {
+    title: item.name,
+    description: item.description,
+    openGraph: {
+      title: item.name,
+      images: [{ url: `/og?title=${encodeURIComponent(item.name)}` }],
+    },
+  }
+}
+
+// ── Optional: static generation ───────────────────────────────────────────────
+// export async function generateStaticParams() {
+//   const items = await getAllItems()
+//   return items.map((i) => ({ {{PARAM_NAME}}: i.id }))
+// }
+
+// ── Page component ────────────────────────────────────────────────────────────
+export default async function {{SEGMENT_NAME}}Page({ params }: Props) {
+  const { {{PARAM_NAME}} } = await params   // always await params in Next.js 16
+  const item = await {{DATA_FUNCTION}}({{PARAM_NAME}})
+  if (!item) notFound()
+
+  return (
+    <main>
+      <h1>{item.name}</h1>
+      {/* Wrap dynamic or heavy sub-sections in Suspense */}
+      <Suspense fallback={<{{SEGMENT_NAME}}Skeleton />}>
+        <{{SEGMENT_NAME}}Details id={{{PARAM_NAME}}} />
+      </Suspense>
+    </main>
+  )
+}
+
+// ── Async sub-component (streams independently) ───────────────────────────────
+async function {{SEGMENT_NAME}}Details({ id }: { id: string }) {
+  const details = await fetch{{SEGMENT_NAME}}Details(id)
+  return <div>{/* render details */}</div>
+}

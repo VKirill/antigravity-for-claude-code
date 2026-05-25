@@ -1,0 +1,49 @@
+{
+  // Set Biome as the default formatter for all supported file types
+  "editor.defaultFormatter": "biomejs.biome",
+
+  // Format on save — applies Biome formatter automatically
+  "editor.formatOnSave": true,
+
+  // Code actions on save — lint fixes + import organization
+  "editor.codeActionsOnSave": {
+    "quickfix.biome": "explicit",
+    "source.organizeImports.biome": "explicit"
+  },
+
+  // Per-language overrides (useful if some files use a different formatter)
+  "[javascript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+
+  // Disable conflicting formatters — prevents double-formatting
+  // Uncomment if Prettier extension is also installed:
+  // "prettier.enable": false,
+
+  // Disable ESLint extension formatting if keeping ESLint for other rules:
+  // "eslint.format.enable": false,
+
+  // Biome extension: show diagnostics inline
+  "biome.lspBin": "./node_modules/@biomejs/biome/bin/biome",
+
+  // Optional: show Biome status in the status bar
+  "biome.enabled": true
+}

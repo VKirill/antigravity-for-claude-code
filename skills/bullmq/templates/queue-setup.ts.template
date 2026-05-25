@@ -1,0 +1,125 @@
+// BullMQ Queue + Worker + QueueEvents — production setup.
+// Includes Zod payload validation, graceful shutdown, dead-letter, structured logging.
+
+import { Queue, Worker, QueueEvents, type Job, type ConnectionOptions } from 'bullmq';
+import { z } from 'zod';
+import pino from 'pino';
+
+const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
+
+// --- Connection ---
+const connection: ConnectionOptions = {
+  host: process.env.REDIS_HOST ?? '127.0.0.1',
+  port: Number(process.env.REDIS_PORT ?? 6379),
+  password: process.env.REDIS_PASSWORD,
+  maxRetriesPerRequest: null,            // REQUIRED for BullMQ
+  enableReadyCheck: true,
+};
+
+// --- Job schema ---
+const EmailJobSchema = z.object({
+  to: z.string().email(),
+  template: z.enum(['welcome', 'reset_password', 'receipt']),
+  variables: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
+});
+type EmailJob = z.infer<typeof EmailJobSchema>;
+
+// --- Queues ---
+export const emailsQueue = new Queue<EmailJob>('emails', {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: { age: 3600, count: 1000 },
+    removeOnFail: { age: 24 * 3600 },
+  },
+});
+
+// Dead-letter queue (DLQ) — for permanently-failed jobs
+export const emailsDLQ = new Queue('emails:dlq', {
+  connection,
+  defaultJobOptions: { removeOnComplete: false, removeOnFail: false },
+});
+
+// --- Events ---
+const events = new QueueEvents('emails', { connection });
+events.on('completed', ({ jobId, returnvalue }) => {
+  logger.info({ jobId, returnvalue }, 'email completed');
+});
+events.on('failed', async ({ jobId, failedReason }) => {
+  logger.error({ jobId, failedReason }, 'email failed');
+  const job = await emailsQueue.getJob(jobId);
+  if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+    // Final failure → DLQ
+    await emailsDLQ.add('dead', {
+      jobId: job.id,
+      name: job.name,
+      data: job.data,
+      err: failedReason,
+      attemptsMade: job.attemptsMade,
+      failedAt: Date.now(),
+    });
+  }
+});
+
+// --- Worker ---
+async function processEmail(job: Job<EmailJob>) {
+  const log = logger.child({ jobId: job.id, name: job.name });
+  const data = EmailJobSchema.parse(job.data);   // validates at entry
+
+  log.info({ to: data.to, template: data.template }, 'sending email');
+  await job.updateProgress(10);
+
+  // Simulate work
+  const result = await sendEmail(data);
+  await job.updateProgress(100);
+
+  return result;
+}
+
+async function sendEmail(data: EmailJob) {
+  // Replace with your SMTP / SES / SendGrid call.
+  await new Promise((r) => setTimeout(r, 100));
+  return { sent: true, messageId: crypto.randomUUID() };
+}
+
+export const emailsWorker = new Worker<EmailJob, { sent: boolean; messageId: string }, string>(
+  'emails',
+  processEmail,
+  {
+    connection,
+    concurrency: 20,
+    lockDuration: 30_000,
+    lockRenewTime: 15_000,
+  },
+);
+
+emailsWorker.on('error', (err) => logger.error({ err }, 'worker error'));
+
+// --- Graceful shutdown ---
+async function shutdown(signal: string) {
+  logger.info({ signal }, 'shutting down');
+  try {
+    await emailsWorker.close();
+    await events.close();
+    await emailsQueue.close();
+    await emailsDLQ.close();
+    process.exit(0);
+  } catch (err) {
+    logger.error({ err }, 'shutdown failed');
+    process.exit(1);
+  }
+}
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT',  () => shutdown('SIGINT'));
+setTimeout(() => { logger.error('force exit'); process.exit(1); }, 60_000).unref();
+
+// --- Enqueue helper ---
+export async function enqueueEmail(data: EmailJob, jobId?: string) {
+  EmailJobSchema.parse(data);    // fail fast at enqueue site
+  await emailsQueue.add('send', data, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+  });
+}

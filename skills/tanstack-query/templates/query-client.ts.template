@@ -1,0 +1,98 @@
+/**
+ * TanStack Query 5 — Production QueryClient configuration
+ *
+ * Usage:
+ *   - Client-side (React app): import { queryClient } and pass to <QueryClientProvider>
+ *   - Next.js App Router SSR: call makeQueryClient() per-request — never use module-level singleton
+ *
+ * Placeholders:
+ *   {{APP_NAME}}       — your application name (used in error logging)
+ *   {{ERROR_REPORTER}} — your error reporting call (e.g., Sentry.captureException(error))
+ */
+
+import {
+  QueryClient,
+  QueryCache,
+  MutationCache,
+  defaultShouldDehydrateQuery,
+} from '@tanstack/react-query';
+
+// ─── Per-request factory (SSR / Next.js App Router) ──────────────────────────
+
+/**
+ * Creates a fresh QueryClient per request.
+ * NEVER use this as a module-level singleton in SSR — it leaks data between users.
+ */
+export function makeQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        // 1 minute: data is fresh — no background refetch during this window
+        staleTime: 60 * 1_000,
+        // 5 minutes: unused cache entries live this long before GC
+        // Must be >= staleTime
+        gcTime: 5 * 60 * 1_000,
+        // Retry strategy: 3 retries, never retry 4xx client errors
+        retry: (failureCount, error) => {
+          if (
+            error instanceof Error &&
+            'status' in error &&
+            typeof (error as { status: unknown }).status === 'number' &&
+            (error as { status: number }).status >= 400 &&
+            (error as { status: number }).status < 500
+          ) {
+            return false;
+          }
+          return failureCount < 3;
+        },
+        retryDelay: (attemptIndex) => Math.min(1_000 * 2 ** attemptIndex, 30_000),
+        // Refetch on window focus — good default; disable for immutable data
+        refetchOnWindowFocus: true,
+        // Network mode: 'online' pauses queries when offline (default)
+        // Change to 'offlineFirst' for PWA/offline-first apps
+        networkMode: 'online',
+      },
+      mutations: {
+        networkMode: 'online',
+      },
+      dehydrate: {
+        // Include pending queries in dehydration (supports Suspense streaming in Next.js)
+        shouldDehydrateQuery: (query) =>
+          defaultShouldDehydrateQuery(query) ||
+          query.state.status === 'pending',
+      },
+    },
+
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        // Global query error handler — fires for all query errors
+        // Only log unexpected errors (not user-facing 404s, etc.)
+        if (
+          query.state.data !== undefined &&
+          !('status' in error && (error as { status: number }).status < 500)
+        ) {
+          console.error(`[{{APP_NAME}}] Query error for ${String(query.queryKey[0])}:`, error);
+          // {{ERROR_REPORTER}}
+        }
+      },
+    }),
+
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) => {
+        // Global mutation error handler
+        // Per-mutation onError callbacks fire first — this is the fallback
+        if (mutation.meta?.suppressGlobalError) return;
+        console.error(`[{{APP_NAME}}] Mutation error:`, error.message);
+        // {{ERROR_REPORTER}}
+      },
+    }),
+  });
+}
+
+// ─── Client-side singleton (non-SSR React apps) ───────────────────────────────
+
+/**
+ * Module-level singleton for client-side only (Vite/CRA/SPA).
+ * Do NOT use in Next.js App Router — use makeQueryClient() per request.
+ */
+export const queryClient = makeQueryClient();

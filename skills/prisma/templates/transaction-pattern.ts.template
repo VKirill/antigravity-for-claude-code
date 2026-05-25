@@ -1,0 +1,107 @@
+// Interactive transaction with serializable isolation and retry-on-conflict.
+// Pattern: read state → write state → audit log → return result.
+
+import { PrismaClient, Prisma } from '../generated/prisma/client';
+
+const prisma = new PrismaClient();
+
+type Result<T> = { ok: true; value: T } | { ok: false; reason: string };
+
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2034' && // serialization failure / deadlock
+        i < attempts - 1
+      ) {
+        await new Promise((r) => setTimeout(r, 50 * 2 ** i));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Transfer money between accounts atomically.
+ * Uses Serializable isolation to prevent write-skew.
+ */
+export async function transfer(
+  fromId: string,
+  toId: string,
+  amount: number,
+): Promise<Result<{ from: number; to: number }>> {
+  return withRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const from = await tx.account.findUniqueOrThrow({ where: { id: fromId } });
+        const to = await tx.account.findUniqueOrThrow({ where: { id: toId } });
+
+        if (Number(from.balance) < amount) {
+          return { ok: false as const, reason: 'insufficient_funds' };
+        }
+
+        const [newFrom, newTo] = await Promise.all([
+          tx.account.update({
+            where: { id: fromId },
+            data: { balance: { decrement: amount } },
+          }),
+          tx.account.update({
+            where: { id: toId },
+            data: { balance: { increment: amount } },
+          }),
+        ]);
+
+        await tx.ledger.create({
+          data: { fromId, toId, amount, kind: 'transfer' },
+        });
+
+        return {
+          ok: true as const,
+          value: { from: Number(newFrom.balance), to: Number(newTo.balance) },
+        };
+      },
+      {
+        isolationLevel: 'Serializable',
+        timeout: 10_000,
+        maxWait: 5_000,
+      },
+    ),
+  );
+}
+
+/**
+ * Idempotent webhook side-effect via idempotency key.
+ * Inserting the key first means duplicate webhooks short-circuit.
+ */
+export async function processPaymentWebhook(
+  idempotencyKey: string,
+  paymentId: string,
+  amount: number,
+) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.idempotencyKey.findUnique({
+      where: { key: idempotencyKey },
+    });
+    if (existing) return { duplicate: true, paymentId };
+
+    await tx.idempotencyKey.create({ data: { key: idempotencyKey, scope: 'payment.succeeded' } });
+
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: { status: 'PAID', paidAt: new Date() },
+    });
+
+    await tx.audit.create({
+      data: { entity: 'payment', entityId: paymentId, action: 'paid', meta: { amount } },
+    });
+
+    return { duplicate: false, paymentId };
+  });
+}

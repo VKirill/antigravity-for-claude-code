@@ -1,0 +1,163 @@
+/**
+ * Canonical utility types for TypeScript projects.
+ * Copy what you need — these are standalone, no dependencies.
+ *
+ * TypeScript 6.0 compatible. Types marked [stdlib] are in the standard library
+ * and shown here for reference; don't redefine them in your project.
+ */
+
+// ── Nullability ──────────────────────────────────────────────────────────────
+
+/** Make T nullable (add null) */
+export type Nullable<T> = T | null;
+
+/** Make T possibly undefined */
+export type Maybe<T> = T | undefined;
+
+/** Remove null and undefined from T [stdlib: NonNullable] */
+export type NonNullable<T> = T extends null | undefined ? never : T;
+
+// ── Object Transformations ───────────────────────────────────────────────────
+
+/** Make all properties of T writable (remove readonly) */
+export type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
+/** Deep readonly — recursively applies Readonly to all nested objects */
+export type DeepReadonly<T> =
+  T extends (infer U)[]
+    ? DeepReadonlyArray<U>
+    : T extends object
+      ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+      : T;
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface DeepReadonlyArray<T> extends ReadonlyArray<DeepReadonly<T>> {}
+
+/** Deep partial — recursively makes all properties optional */
+export type DeepPartial<T> =
+  T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
+/** Deep required — recursively makes all properties required */
+export type DeepRequired<T> =
+  T extends object
+    ? { [K in keyof T]-?: DeepRequired<T[K]> }
+    : T;
+
+/** Pick properties of T whose value type extends V */
+export type PickByValue<T, V> = {
+  [K in keyof T as T[K] extends V ? K : never]: T[K];
+};
+
+/** Omit properties of T whose value type extends V */
+export type OmitByValue<T, V> = {
+  [K in keyof T as T[K] extends V ? never : K]: T[K];
+};
+
+// ── Promise & Async ──────────────────────────────────────────────────────────
+
+/** Unwrap a Promise type (non-recursive) */
+export type Awaited<T> = T extends Promise<infer U> ? U : T;
+// Note: stdlib Awaited<T> is recursive (TS 4.5+). Use stdlib version.
+
+/** Return type of an async function */
+export type AsyncReturnType<T extends (...args: never[]) => Promise<unknown>> =
+  T extends (...args: never[]) => Promise<infer R> ? R : never;
+
+// ── Function Types ───────────────────────────────────────────────────────────
+
+/** Any function (use instead of `Function` which includes `new`) */
+export type AnyFn = (...args: unknown[]) => unknown;
+
+/** Extract the argument types of a function as a tuple [stdlib: Parameters] */
+export type Parameters<T extends (...args: never[]) => unknown> =
+  T extends (...args: infer P) => unknown ? P : never;
+
+/** Extract first argument type of a function */
+export type FirstArg<T extends (first: never, ...rest: never[]) => unknown> =
+  T extends (first: infer F, ...rest: never[]) => unknown ? F : never;
+
+/** Make a function's arguments optional */
+export type PartialArgs<T extends AnyFn> =
+  T extends (...args: infer A) => infer R
+    ? (...args: Partial<A> extends infer PA ? (PA extends unknown[] ? PA : never) : never) => R
+    : never;
+
+// ── Branded / Nominal Types ─────────────────────────────────────────────────
+
+/** Create a branded type: Base & { __brand: Brand } */
+export type Brand<Base, BrandTag extends string> = Base & { readonly __brand: BrandTag };
+
+/**
+ * Create a branded string type with a constructor function.
+ *
+ * Usage:
+ *   const UserId = createBrand<string, "UserId">();
+ *   type UserId = Brand<string, "UserId">;
+ *   const id = UserId("user_123");
+ */
+export function createBrand<Base, BrandTag extends string>() {
+  return (value: Base) => value as Brand<Base, BrandTag>;
+}
+
+// ── String Manipulation ──────────────────────────────────────────────────────
+
+/** Remove a prefix from a string type */
+export type TrimPrefix<S extends string, P extends string> =
+  S extends `${P}${infer Rest}` ? Rest : S;
+
+/** Remove a suffix from a string type */
+export type TrimSuffix<S extends string, Suffix extends string> =
+  S extends `${infer Rest}${Suffix}` ? Rest : S;
+
+/** Convert object keys to camelCase (single-level template literal) */
+export type CamelCaseKey<S extends string> =
+  S extends `${infer A}_${infer B}${infer C}`
+    ? `${A}${Uppercase<B>}${CamelCaseKey<C>}`
+    : S;
+
+/** Convert snake_case object keys to camelCase (single level) */
+export type CamelCaseKeys<T extends Record<string, unknown>> = {
+  [K in keyof T as CamelCaseKey<string & K>]: T[K];
+};
+
+// ── Tuple & Array ────────────────────────────────────────────────────────────
+
+/** Extract first element of a tuple */
+export type Head<T extends readonly unknown[]> = T extends readonly [infer H, ...unknown[]] ? H : never;
+
+/** Extract all but first element of a tuple */
+export type Tail<T extends readonly unknown[]> = T extends readonly [unknown, ...infer Rest] ? Rest : never;
+
+/** Check if two types are exactly equal */
+export type Equals<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+
+// ── Union Utilities ──────────────────────────────────────────────────────────
+
+/** Union to intersection: A | B | C → A & B & C */
+export type UnionToIntersection<U> =
+  (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never;
+
+/** Get the last member of a union (implementation detail: uses contravariance) */
+export type LastOfUnion<T> =
+  UnionToIntersection<T extends unknown ? () => T : never> extends () => infer R ? R : never;
+
+// ── Miscellaneous ────────────────────────────────────────────────────────────
+
+/** Prettify an intersection type for display */
+export type Prettify<T> = { [K in keyof T]: T[K] } & {};
+
+/** Make specific keys of T required, leave others unchanged */
+export type RequireKeys<T, K extends keyof T> = Required<Pick<T, K>> & Omit<T, K>;
+
+/** Make specific keys of T optional, leave others unchanged */
+export type PartialKeys<T, K extends keyof T> = Partial<Pick<T, K>> & Omit<T, K>;
+
+/** Overwrite properties of T with properties from U */
+export type Override<T, U> = Omit<T, keyof U> & U;
+
+/** Assert type T is never (used for exhaustive checks) */
+export function assertNever(x: never, message?: string): never {
+  throw new Error(message ?? `Unexpected value: ${JSON.stringify(x)}`);
+}

@@ -89,12 +89,15 @@
 
 ## Перенесённые скиллы (`/skills`)
 
-Помогают Gemini работать как профессиональный разработчик, архитектор или дизайнер:
+Курированный **программистский** набор (**94 скилла**), которые воркеры agy подгружают по `skill_hints` из контракта — чтобы Gemini писал по актуальным идиомам 2026, а не по дефолтам из обучающих данных. Маркетинг / SEO / дизайн-креатив / сторонние скиллы намеренно исключены. Установка: `./scripts/install-skills.sh` (шаг 5).
 
-* **Базовые**: `coder-craft` (чистый код, хирургические правки, контроль лимитов строк), `karpathy-guidelines` (простота, отказ от лишних абстракций).
-* **Рабочий процесс**: `orchestrator-workflow` (парсинг YAML-контрактов, работа с БД, авто-восстановление), `claude-code` (паттерны интеграции).
-* **Фронтенд**: `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `web-qa-2026`, `media-asset-pipeline`.
-* **Тестирование и текст**: `pytest`, `vitest`, `ru-text-quick` (инфостиль, русская типографика, запрет ИИ-клише).
+* **Дисциплина кода**: `coder-craft`, `karpathy-guidelines`, `architecture-craft`, `data-systems-craft`, `refactoring`, `refactor-hotspots-craft`, `review-craft`, `testing-craft`, `tdd`, `debugging-craft`, `systematic-debugging`, `logging-standards-2026`, `cybersecurity-audit`, `ru-text-quick`.
+* **Процесс и мета**: `orchestrator-workflow`, `claude-code`, `claude-api`, `mcp-builder`, `agent-builder`, `skill-evaluation`, `project-architecting`, `git`, `linux-sysadmin`, `gitnexus-*`.
+* **Языки**: `typescript`, `python`, `pydantic`, `sqlalchemy`, `httpx`, `numpy`, `pandas`, `polars`, `scikit-learn`, `pytorch`, `transformers`, `cuda-python`.
+* **Фронтенд**: `react`, `vue`, `nextjs`, `nuxt`, `astro`, `tailwind`, `shadcn`, `react-hook-form`, `tanstack-query`, `vite`, `biome`, `eslint`, `i18n`, `frontend-craft`, `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `ui-craft`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `web-qa-2026`, `media-asset-pipeline`.
+* **Бэкенд / данные**: `nodejs`, `fastify`, `hono`, `fastapi`, `django`, `langchain`, `better-auth`, `bullmq`, `prisma`, `postgresql`, `redis`, `zod`.
+* **Интеграции**: `cloudpayments`, `yookassa`, `telegram-bot`, `vk-bridge`, `max-bridge`, `expo`, `remotion`, `google-cloud-auth`, `yandex-cloud`, `proxy6`.
+* **Тестирование**: `pytest`, `vitest`, `playwright`.
 
 ---
 
@@ -171,8 +174,10 @@ cp CLAUDE.global.md ~/.claude/CLAUDE.md
 
 ### 5. Установка скиллов разработчика
 ```bash
-mkdir -p ~/.gemini/antigravity-cli/skills
-cp -r skills/* ~/.gemini/antigravity-cli/skills/
+./scripts/install-skills.sh
+# копирует все скиллы в ~/.agents/skills (папка скиллов agy;
+# ~/.gemini/antigravity-cli/skills — симлинк на неё).
+# другой путь: AGY_SKILLS_DIR=/path ./scripts/install-skills.sh
 ```
 
 ### 6. Установка хуков качества (рекомендуется)

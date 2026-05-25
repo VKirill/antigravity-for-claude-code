@@ -1,0 +1,102 @@
+-- Initial schema migration for a multi-tenant SaaS on PostgreSQL 18.
+-- Uses uuidv7() (PG18 built-in), RLS-ready, indexes on every FK.
+-- Tool-agnostic — works with dbmate, sqitch, Atlas, plain psql.
+
+-- migrate:up
+
+-- =====================================================
+-- Extensions
+-- =====================================================
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- =====================================================
+-- Tables
+-- =====================================================
+CREATE TABLE organizations (
+  id          uuid PRIMARY KEY DEFAULT uuidv7(),
+  slug        text NOT NULL UNIQUE,
+  name        text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  deleted_at  timestamptz
+);
+
+CREATE TABLE users (
+  id          uuid PRIMARY KEY DEFAULT uuidv7(),
+  email       citext NOT NULL,
+  name        text,
+  role        text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  deleted_at  timestamptz
+);
+
+CREATE UNIQUE INDEX users_email_active_unique
+  ON users (email) WHERE deleted_at IS NULL;
+
+CREATE TABLE memberships (
+  user_id     uuid NOT NULL REFERENCES users(id)         ON DELETE CASCADE,
+  org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  role        text NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+  joined_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, org_id)
+);
+
+CREATE INDEX memberships_org_id_idx ON memberships (org_id);
+
+CREATE TABLE posts (
+  id          uuid PRIMARY KEY DEFAULT uuidv7(),
+  org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  author_id   uuid NOT NULL REFERENCES users(id)         ON DELETE CASCADE,
+  slug        text NOT NULL,
+  title       text NOT NULL,
+  body        text NOT NULL,
+  published   boolean NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  deleted_at  timestamptz,
+
+  CONSTRAINT posts_slug_per_org_unique UNIQUE (org_id, slug)
+);
+
+CREATE INDEX posts_org_id_idx          ON posts (org_id);
+CREATE INDEX posts_author_id_idx       ON posts (author_id);
+CREATE INDEX posts_published_recent_idx ON posts (org_id, created_at DESC) WHERE published = true AND deleted_at IS NULL;
+CREATE INDEX posts_title_trgm_idx      ON posts USING GIN (title gin_trgm_ops);
+
+-- =====================================================
+-- Triggers — auto-update updated_at
+-- =====================================================
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER posts_set_updated_at BEFORE UPDATE ON posts
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================
+-- Row-Level Security (RLS) — enable per-tenant isolation
+-- =====================================================
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE posts FORCE  ROW LEVEL SECURITY;
+
+CREATE POLICY posts_tenant_isolation ON posts
+  FOR ALL
+  USING       (org_id = current_setting('app.org_id', true)::uuid)
+  WITH CHECK  (org_id = current_setting('app.org_id', true)::uuid);
+
+-- migrate:down
+
+DROP TABLE IF EXISTS posts;
+DROP TABLE IF EXISTS memberships;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS organizations;
+DROP FUNCTION IF EXISTS set_updated_at();
+-- keep extensions

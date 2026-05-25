@@ -1,0 +1,54 @@
+/**
+ * auth.setup.ts — storageState authentication fixture
+ *
+ * Placeholders (replace before use):
+ *   {{LOGIN_URL}}          — login page path, e.g. /login or /auth/sign-in
+ *   {{DASHBOARD_URL}}      — post-login redirect URL, e.g. /dashboard
+ *   {{EMAIL_ENV_VAR}}      — env var name for email, e.g. TEST_USER_EMAIL
+ *   {{PASSWORD_ENV_VAR}}   — env var name for password, e.g. TEST_USER_PASSWORD
+ *   {{AUTH_FILE}}          — output path, e.g. playwright/.auth/user.json
+ *
+ * Usage:
+ *   1. Copy to tests/auth.setup.ts (or tests/auth.admin.setup.ts for multi-role)
+ *   2. Replace placeholders
+ *   3. Add playwright/.auth/ to .gitignore
+ *   4. Reference in playwright.config.ts projects[].use.storageState
+ */
+
+import { test as setup, expect } from '@playwright/test';
+import path from 'path';
+
+const authFile = path.join(__dirname, '..', '{{AUTH_FILE}}');
+
+setup('authenticate', async ({ page }) => {
+  // Validate env vars fail-fast
+  const email = process.env.{{EMAIL_ENV_VAR}};
+  const password = process.env.{{PASSWORD_ENV_VAR}};
+
+  if (!email || !password) {
+    throw new Error(
+      '{{EMAIL_ENV_VAR}} and {{PASSWORD_ENV_VAR}} must be set. ' +
+      'Create a .env.test file or set them in your CI environment.'
+    );
+  }
+
+  // Navigate to login
+  await page.goto('{{LOGIN_URL}}');
+
+  // Fill credentials — use getByLabel for form fields
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+
+  // Submit — adjust if your form uses a different submit pattern
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  // Wait for successful login
+  await page.waitForURL('{{DASHBOARD_URL}}');
+
+  // Verify we actually landed on the authenticated page
+  // Adjust this assertion to match your app's post-login state
+  await expect(page).toHaveURL('{{DASHBOARD_URL}}');
+
+  // Save auth state (cookies + localStorage)
+  await page.context().storageState({ path: authFile });
+});

@@ -1,0 +1,277 @@
+/**
+ * templates/multi-step-form.tsx
+ * Multi-step form with FormProvider, per-step trigger, and final submit
+ *
+ * Placeholders to replace:
+ *   {{FormName}}   - e.g. CheckoutForm, OnboardingForm
+ *   {{onComplete}} - callback after final step submit
+ *
+ * Pattern: single useForm at root, FormProvider shares context,
+ * steps call useFormContext. trigger() validates per-step fields before advance.
+ *
+ * Dependencies: react-hook-form, @hookform/resolvers, zod, shadcn/ui Button
+ */
+
+'use client'
+
+import { useState } from 'react'
+import { FormProvider, useForm, useFormContext } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Button } from '@/components/ui/button'
+
+// ─── 1. Full schema (all steps combined) ────────────────────────────────────
+
+const schema = z.object({
+  // Step 1: Account
+  email: z.string().email(),
+  password: z.string().min(8, 'At least 8 characters'),
+  // Step 2: Profile
+  firstName: z.string().min(1, 'Required'),
+  lastName: z.string().min(1, 'Required'),
+  // Step 3: Preferences
+  plan: z.enum(['free', 'pro', 'enterprise']),
+  newsletter: z.boolean(),
+})
+
+type Schema = z.infer<typeof schema>
+
+// Step → field mapping: which fields belong to each step
+const STEP_FIELDS = {
+  1: ['email', 'password'],
+  2: ['firstName', 'lastName'],
+  3: ['plan', 'newsletter'],
+} as const satisfies Record<number, readonly (keyof Schema)[]>
+
+const TOTAL_STEPS = Object.keys(STEP_FIELDS).length
+
+// ─── 2. Root form component ──────────────────────────────────────────────────
+
+interface {{FormName}}Props {
+  onComplete: (data: Schema) => Promise<void>
+}
+
+export function {{FormName}}({ onComplete }: {{FormName}}Props) {
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+
+  const methods = useForm<Schema>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      email: '',
+      password: '',
+      firstName: '',
+      lastName: '',
+      plan: 'free',
+      newsletter: false,
+    },
+    // shouldUnregister: false (default) — fields keep values when step changes
+  })
+
+  const { isSubmitting, isSubmitSuccessful, errors } = methods.formState
+
+  // Validate current step's fields, then advance
+  async function handleNext() {
+    const fields = STEP_FIELDS[step] as unknown as (keyof Schema)[]
+    const valid = await methods.trigger(fields)
+    if (!valid) return
+    setStep((s) => (s + 1) as 1 | 2 | 3)
+  }
+
+  function handleBack() {
+    setStep((s) => (s - 1) as 1 | 2 | 3)
+  }
+
+  async function onSubmit(data: Schema) {
+    try {
+      await onComplete(data)
+    } catch (err) {
+      methods.setError('root', {
+        type: 'server',
+        message: 'Submission failed. Please try again.',
+      })
+    }
+  }
+
+  // Show success state after submission
+  if (isSubmitSuccessful) {
+    return (
+      <div className="text-center">
+        <p className="text-lg font-medium">All done!</p>
+        <Button
+          variant="outline"
+          onClick={() => {
+            methods.reset()
+            setStep(1)
+          }}
+        >
+          Start over
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <FormProvider {...methods}>
+      <div className="space-y-6">
+        {/* Progress indicator */}
+        <StepIndicator current={step} total={TOTAL_STEPS} />
+
+        {/* Root error */}
+        {errors.root && (
+          <p role="alert" className="text-sm text-destructive">
+            {errors.root.message}
+          </p>
+        )}
+
+        {/* Step content — conditional render, NOT unmount */}
+        <form onSubmit={methods.handleSubmit(onSubmit)}>
+          {step === 1 && <Step1 />}
+          {step === 2 && <Step2 />}
+          {step === 3 && <Step3 />}
+
+          {/* Navigation */}
+          <div className="mt-6 flex justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleBack}
+              disabled={step === 1}
+            >
+              Back
+            </Button>
+
+            {step < TOTAL_STEPS ? (
+              <Button type="button" onClick={handleNext}>
+                Next
+              </Button>
+            ) : (
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting…' : 'Submit'}
+              </Button>
+            )}
+          </div>
+        </form>
+      </div>
+    </FormProvider>
+  )
+}
+
+// ─── 3. Step components ───────────────────────────────────────────────────────
+
+function Step1() {
+  const { register, formState: { errors } } = useFormContext<Schema>()
+
+  return (
+    <fieldset className="space-y-4">
+      <legend className="text-lg font-medium">Account</legend>
+
+      <div>
+        <label className="block text-sm font-medium">Email</label>
+        <input
+          {...register('email')}
+          type="email"
+          className="mt-1 block w-full rounded border px-3 py-2"
+        />
+        {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium">Password</label>
+        <input
+          {...register('password')}
+          type="password"
+          className="mt-1 block w-full rounded border px-3 py-2"
+        />
+        {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>}
+      </div>
+    </fieldset>
+  )
+}
+
+function Step2() {
+  const { register, formState: { errors } } = useFormContext<Schema>()
+
+  return (
+    <fieldset className="space-y-4">
+      <legend className="text-lg font-medium">Profile</legend>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium">First Name</label>
+          <input
+            {...register('firstName')}
+            className="mt-1 block w-full rounded border px-3 py-2"
+          />
+          {errors.firstName && <p className="mt-1 text-sm text-red-600">{errors.firstName.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Last Name</label>
+          <input
+            {...register('lastName')}
+            className="mt-1 block w-full rounded border px-3 py-2"
+          />
+          {errors.lastName && <p className="mt-1 text-sm text-red-600">{errors.lastName.message}</p>}
+        </div>
+      </div>
+    </fieldset>
+  )
+}
+
+function Step3() {
+  const { register, formState: { errors } } = useFormContext<Schema>()
+
+  return (
+    <fieldset className="space-y-4">
+      <legend className="text-lg font-medium">Preferences</legend>
+
+      <div>
+        <label className="block text-sm font-medium">Plan</label>
+        <select
+          {...register('plan')}
+          className="mt-1 block w-full rounded border px-3 py-2"
+        >
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+        {errors.plan && <p className="mt-1 text-sm text-red-600">{errors.plan.message}</p>}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          {...register('newsletter')}
+          type="checkbox"
+          id="newsletter"
+          className="h-4 w-4"
+        />
+        <label htmlFor="newsletter" className="text-sm">
+          Subscribe to newsletter
+        </label>
+      </div>
+    </fieldset>
+  )
+}
+
+// ─── 4. Step indicator ────────────────────────────────────────────────────────
+
+function StepIndicator({ current, total }: { current: number; total: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
+        <div key={n} className="flex items-center gap-2">
+          <div
+            className={[
+              'flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium',
+              n < current ? 'bg-primary text-primary-foreground' : '',
+              n === current ? 'border-2 border-primary text-primary' : '',
+              n > current ? 'border-2 border-muted text-muted-foreground' : '',
+            ].join(' ')}
+          >
+            {n}
+          </div>
+          {n < total && <div className="h-px w-8 bg-muted" />}
+        </div>
+      ))}
+    </div>
+  )
+}

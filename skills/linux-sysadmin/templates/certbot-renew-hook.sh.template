@@ -1,0 +1,39 @@
+#!/bin/bash
+# Certbot deploy hook — runs after each successful certificate renewal
+# Install: cp to /etc/letsencrypt/renewal-hooks/deploy/reload-webserver.sh
+# Make executable: chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-webserver.sh
+# Test: certbot renew --dry-run
+
+set -euo pipefail
+
+LOG="/var/log/letsencrypt/deploy-hook.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG}"
+}
+
+log "Cert renewed for domain(s): ${RENEWED_DOMAINS:-unknown}"
+log "Cert path: ${RENEWED_LINEAGE:-unknown}"
+
+# Reload Angie (or nginx)
+if systemctl is-active --quiet angie; then
+    angie -t && systemctl reload angie && log "Angie reloaded OK" \
+        || log "ERROR: angie -t failed — NOT reloaded"
+elif systemctl is-active --quiet nginx; then
+    nginx -t && systemctl reload nginx && log "nginx reloaded OK" \
+        || log "ERROR: nginx -t failed — NOT reloaded"
+else
+    log "WARNING: neither angie nor nginx is active"
+fi
+
+# Reload HAProxy if in use
+# if systemctl is-active --quiet haproxy; then
+#     systemctl reload haproxy && log "HAProxy reloaded OK"
+# fi
+
+# Optionally push cert to a secondary location
+# cp "${RENEWED_LINEAGE}/fullchain.pem" /etc/haproxy/ssl/fullchain.pem
+# cat "${RENEWED_LINEAGE}/fullchain.pem" "${RENEWED_LINEAGE}/privkey.pem" \
+#     > /etc/haproxy/ssl/combined.pem
+
+log "Deploy hook completed"

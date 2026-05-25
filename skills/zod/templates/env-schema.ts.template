@@ -1,0 +1,114 @@
+/**
+ * templates/env-schema.ts
+ * Typed environment variable loader using Zod 4.
+ *
+ * Usage:
+ *   1. Copy to src/config/env.ts (or similar)
+ *   2. Replace {{PLACEHOLDERS}} with your actual env vars
+ *   3. Import `env` wherever you need typed config
+ *   4. Call parseEnv() once at process startup (before any other module)
+ *
+ * Pattern: validate at startup → fail fast → typed access everywhere else
+ */
+
+import { z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Schema definition
+// ---------------------------------------------------------------------------
+
+const EnvSchema = z.object({
+  // --- Server ---
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().min(1024).max(65535).default(3000),
+  HOST: z.string().default("0.0.0.0"),
+
+  // --- Database ---
+  DATABASE_URL: z.url({ message: "DATABASE_URL must be a valid URL" }),
+  // Optional: DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+
+  // --- Auth ---
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+  JWT_EXPIRES_IN: z.string().default("7d"),
+
+  // --- External services (add your own) ---
+  // REDIS_URL: z.url().optional(),
+  // SMTP_HOST: z.string().optional(),
+  // SMTP_PORT: z.coerce.number().int().default(587),
+  // SMTP_USER: z.string().optional(),
+  // SMTP_PASS: z.string().optional(),
+
+  // --- Feature flags ---
+  // LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  // RATE_LIMIT_ENABLED: z.coerce.boolean().default(true),
+});
+
+// ---------------------------------------------------------------------------
+// Static type — import this wherever you need typed config
+// ---------------------------------------------------------------------------
+
+export type Env = z.infer<typeof EnvSchema>;
+
+// ---------------------------------------------------------------------------
+// Singleton with startup validation
+// ---------------------------------------------------------------------------
+
+let _env: Env | undefined;
+
+/**
+ * Parse and validate process.env. Throws with a readable error on startup if
+ * any required variable is missing or invalid.
+ *
+ * Call once before server.listen() or app bootstrap. After that, import `env`.
+ */
+export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const result = EnvSchema.safeParse(source);
+
+  if (!result.success) {
+    const flat = result.error.flatten();
+    const missing: string[] = [];
+    const invalid: string[] = [];
+
+    for (const [key, messages] of Object.entries(flat.fieldErrors)) {
+      if (messages?.some(m => m.includes("required") || m.includes("undefined"))) {
+        missing.push(key);
+      } else {
+        invalid.push(`${key}: ${messages?.[0] ?? "invalid"}`);
+      }
+    }
+
+    const lines: string[] = ["[env] Startup validation failed:"];
+    if (missing.length) lines.push(`  Missing required: ${missing.join(", ")}`);
+    if (invalid.length) lines.push(`  Invalid values:\n${invalid.map(s => `    - ${s}`).join("\n")}`);
+
+    throw new Error(lines.join("\n"));
+  }
+
+  _env = result.data;
+  return _env;
+}
+
+/**
+ * Returns the validated env. Must call parseEnv() first.
+ * Throws if called before parseEnv().
+ */
+export function getEnv(): Env {
+  if (!_env) {
+    throw new Error(
+      "[env] getEnv() called before parseEnv(). " +
+      "Call parseEnv() during app startup."
+    );
+  }
+  return _env;
+}
+
+/**
+ * Convenience: call parseEnv() and export the result.
+ * Use this pattern if you want a module-level import:
+ *
+ *   import { env } from "./config/env.js";
+ *   app.listen(env.PORT);
+ *
+ * This will throw at import time if env is invalid — which is the desired behavior.
+ */
+export const env: Env = parseEnv();

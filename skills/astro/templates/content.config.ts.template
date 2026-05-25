@@ -1,0 +1,47 @@
+// src/content/config.ts — Content Layer collections with Zod schemas + glob loader.
+// Astro 6 Content Layer API. (Astro also recognises src/content.config.ts; pick one — pre-v5 docs use src/content/config.ts canonically.)
+
+import { defineCollection } from "astro:content";
+import { z } from "astro/zod";
+import { glob, file } from "astro/loaders";
+
+// --- Blog posts (local Markdown / MDX under src/content/blog/) ---
+const blog = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/blog" }),
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    pubDate: z.coerce.date(),
+    updatedDate: z.coerce.date().optional(),
+    heroImage: z.string().optional(),
+    tags: z.array(z.string()).default([]),
+    draft: z.boolean().default(false),
+  }),
+});
+
+// --- Docs (per-section folders with frontmatter ordering) ---
+const docs = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/docs" }),
+  schema: z.object({
+    title: z.string(),
+    order: z.number().default(0),
+    section: z.string(),
+  }),
+});
+
+// Example: remote CMS loader pattern (uncomment + adjust)
+// const products = defineCollection({
+//   loader: async () => {
+//     const res = await fetch("https://cms.example.com/api/products");
+//     const data = await res.json();
+//     return data.map((p: any) => ({ id: p.slug, ...p }));
+//   },
+//   schema: z.object({ title: z.string(), price: z.number(), description: z.string() }),
+// });
+
+export const collections = { blog, docs };
+
+// Query in pages:
+//   import { getCollection, getEntry } from "astro:content";
+//   const posts = await getCollection("blog", ({ data }) => !data.draft);
+//   const post  = await getEntry("blog", Astro.params.slug);

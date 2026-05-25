@@ -1,0 +1,120 @@
+// Cache-aside with stampede protection (SET NX lock) and TTL jitter.
+// Pair with ioredis (see ioredis-setup.ts.template).
+
+import type Redis from 'ioredis';
+import crypto from 'node:crypto';
+
+interface CacheOptions {
+  ttlSeconds: number;
+  jitterRatio?: number;        // default 0.1 = ±10%
+  lockSeconds?: number;        // default 10
+  staleTtlSeconds?: number;    // default 0 — disable negative caching
+}
+
+// Lua script to release the lock atomically only if the token matches
+const RELEASE_LOCK_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+export class CacheAside {
+  constructor(private readonly redis: Redis) {}
+
+  /**
+   * Get-or-compute with cache-aside + stampede protection.
+   *
+   * 1. If cached → return it.
+   * 2. Acquire a per-key NX lock.
+   * 3. If lock acquired → compute, store, release lock.
+   * 4. If lock NOT acquired → another worker is computing; wait briefly + retry.
+   */
+  async get<T>(
+    key: string,
+    fetcher: () => Promise<T | null>,
+    opts: CacheOptions,
+  ): Promise<T | null> {
+    const cached = await this.redis.get(key);
+    if (cached !== null) {
+      if (cached === '__NULL__') return null;
+      return JSON.parse(cached) as T;
+    }
+
+    const lockKey = `lock:${key}`;
+    const token = crypto.randomUUID();
+    const lockSec = opts.lockSeconds ?? 10;
+
+    const acquired = await this.redis.set(lockKey, token, 'EX', lockSec, 'NX');
+
+    if (acquired) {
+      try {
+        const value = await fetcher();
+        const ttl = this.jitter(opts.ttlSeconds, opts.jitterRatio ?? 0.1);
+        if (value === null && opts.staleTtlSeconds) {
+          // negative cache — short TTL to avoid hammering DB on probed 404s
+          await this.redis.set(key, '__NULL__', 'EX', opts.staleTtlSeconds);
+        } else if (value !== null) {
+          await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+        }
+        return value;
+      } finally {
+        await this.redis.eval(RELEASE_LOCK_LUA, 1, lockKey, token);
+      }
+    }
+
+    // Another worker is fetching — backoff and retry
+    await this.sleep(50 + Math.random() * 100);
+    return this.get(key, fetcher, opts);
+  }
+
+  /**
+   * Invalidate a key (or pattern, but use sparingly — SCAN cost).
+   */
+  async invalidate(key: string): Promise<void> {
+    await this.redis.del(key);
+  }
+
+  async invalidatePattern(pattern: string): Promise<number> {
+    let cursor = '0';
+    let deleted = 0;
+    do {
+      const [next, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
+      if (keys.length > 0) {
+        deleted += await this.redis.unlink(...keys);
+      }
+      cursor = next;
+    } while (cursor !== '0');
+    return deleted;
+  }
+
+  private jitter(ttl: number, ratio: number): number {
+    const delta = ttl * ratio;
+    return Math.max(1, Math.round(ttl + (Math.random() * 2 - 1) * delta));
+  }
+
+  private sleep(ms: number) {
+    return new Promise<void>((r) => setTimeout(r, ms));
+  }
+}
+
+// --- Usage ---
+//
+// import { redis } from './redis';
+// import { CacheAside } from './cache-aside';
+//
+// const cache = new CacheAside(redis);
+//
+// async function getUser(id: string) {
+//   return cache.get(
+//     `user:${id}`,
+//     () => db.user.findUnique({ where: { id } }),
+//     { ttlSeconds: 300, staleTtlSeconds: 30 },
+//   );
+// }
+//
+// async function updateUser(id: string, data: Partial<User>) {
+//   const u = await db.user.update({ where: { id }, data });
+//   await cache.invalidate(`user:${id}`);
+//   return u;
+// }

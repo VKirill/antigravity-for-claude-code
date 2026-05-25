@@ -1,0 +1,55 @@
+# {{project_name}}
+
+Project memory for OpenCode (and OpenAI Codex CLI). Keep under 500 lines.
+
+## Stack
+
+- Language: {{primary_language}}
+- Framework: {{primary_framework}}
+- Runtime: {{runtime}}
+- Package manager: {{pkg_manager}}
+
+## Commands
+
+```bash
+{{install_cmd}}       # install dependencies
+{{dev_cmd}}           # start dev server
+{{test_cmd}}          # run tests
+{{build_cmd}}         # production build
+{{lint_cmd}}          # lint
+```
+
+## Layout
+
+```
+src/
+  features/
+  shared/
+  app/
+tests/
+```
+
+## Conventions
+
+- Format with {{formatter}} on save (wrapper script around `opencode run`)
+- TypeScript strict
+- Imports: absolute via `@/` alias
+- Tests colocated as `*.test.ts`
+
+## Don't
+
+- Don't edit `.env*` files
+- Don't run `npm publish`
+- Don't commit `~/.local/share/opencode/auth.json` (it's user-local anyway)
+
+## Use the `plan` agent for unfamiliar areas
+
+`opencode run "..." --agent plan` for read-only exploration before writing.
+
+## Use the `bulk` agent for cheap mass operations
+
+Configured to use Groq for ~10× speed + cost reduction.
+
+## CI
+
+PRs are auto-reviewed by `opencode run` in `.github/workflows/opencode-review.yml`.
