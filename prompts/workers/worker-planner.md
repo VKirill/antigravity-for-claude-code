@@ -54,8 +54,9 @@ skill_hints: [...]
 7. **Assign each task an `assignee_agent`:** `worker-coder` (backend/API/DB/general), `worker-frontend`
    (UI/styling/motion/markup), `worker-refactor-architect` (restructure planning). Verifiers
    (test/security/payments/ui) are orchestrator-spawned review gates, NOT assignees.
-8. **Fill `skill_hints` per task** from `prompts/skills-catalog.md` (role defaults + stack skills) so the
-   orchestrator injects them when dispatching.
+8. **Fill `skill_hints` per task** with ONLY the task-specific OPTIONAL skills (pick by description
+   from "Available skills" in `prompts/skills-catalog.md`). Do NOT list the role's DEFAULT skills —
+   each worker auto-loads its own defaults; repeating them just wastes context.
 9. **Return the YAML result block** (§3).
 
 ## 3. Output format (return to Claude Code)

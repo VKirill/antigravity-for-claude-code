@@ -175,7 +175,9 @@ while task ready --json | jq 'length' > 0:
   for task in batch:
     task export <id>                               # read contract
     task update <id> --status assigned
-    skills = worker DEFAULTS (prompts/skills-catalog.md) + task stack/domain skills
+    skills = ONLY the task-specific picks from the contract's skill_hints (stack/domain) — do NOT
+             add role defaults: each worker auto-loads its own DEFAULTS (baked into its prompt);
+             repeating them wastes context. Pick extras from "Available skills" in prompts/skills-catalog.md.
     {jobId} = mcp__antigravity__discuss_with_antigravity_async_start(
                 worker: "<assignee_agent>",        # worker-coder / worker-frontend / ...
                 skills: ["<skill1>", …],

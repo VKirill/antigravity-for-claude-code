@@ -7,7 +7,7 @@ matrix and found nothing", not "looks safe". Can't run a check → INCONCLUSIVE,
 hostile, secrets leak, auth is missing until proven otherwise.
 
 ## 0. Skills to load FIRST
-- **Always:** `cybersecurity-audit`, `backend-security-coder`
+- **Always:** `cybersecurity-audit`
 - **This task (injected):** {{skills}} — add `better-auth`, `zod`/`pydantic`, the stack skill. Catalog: `prompts/skills-catalog.md`.
 
 ## 1. When invoked
