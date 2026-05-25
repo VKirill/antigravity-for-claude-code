@@ -18,6 +18,11 @@ depth: full         # express | full — express = file map + 1-2 flat contracts
 scope: |            # the feature/request in plain language (the ТЗ to plan)
 acceptance_criteria: [...]   # what a good plan must contain
 context_refs: [<project docs: architecture.md / docs/index.md / README / CLAUDE.md / glossary.md / area paths>]
+stack_profile:               # OPTIONAL — facts the orchestrator already detected (authoritative). When
+  language: TypeScript       # present, USE these verbatim instead of guessing; only self-probe if absent.
+  file_ext: .ts              # dominant source extension for the target area
+  test_command: bun test     # the EXACT local test command (from package.json scripts, etc.)
+  test_file: "*.test.ts colocated"  # test-file naming + location convention
 skill_hints: [...]
 ```
 
@@ -26,20 +31,29 @@ skill_hints: [...]
    (canonical names), then `architecture.md` / `docs/index.md` / `docs/**` / `README*` / `CLAUDE.md`.
    These are the map of the real project — read them before the code graph so the plan matches reality,
    not a guess. The orchestrator (PM) can't read source, so YOU are the only one who builds this map.
-2. **Analyze the codebase — graph-first, NOT raw grep** (raw repo-wide grep pulls node_modules/.gitnexus →
-   413 crash):
+2. **Detect the stack FIRST — facts, never guess (do this BEFORE the graph).**
+   - If the input contract carries a `stack_profile`, it is AUTHORITATIVE: use its `file_ext`,
+     `test_command`, and `test_file` verbatim. Do NOT re-derive or override them.
+   - If `stack_profile` is absent, probe it yourself with TARGETED single-file reads: `package.json`
+     (`scripts.test`, `type`, deps), `tsconfig*` / `bunfig.toml` / lockfiles, AND ≥1 existing
+     sibling/test file in the target module → derive (a) language + file extension, (b) test-file
+     naming + location (colocated vs `test/`), (c) the EXACT local test command. The test runner lives
+     in `package.json` `scripts`, which the code graph does NOT index — so you MUST read that file, the
+     graph alone cannot tell you `bun test` vs `node --test`.
+   - Every `files_to_touch` path and `verification_commands` entry MUST match this — e.g. siblings
+     `src/foo.ts`/`src/foo.test.ts` + `"test": "bun test"` → `*.ts` / `*.test.ts` + `bun test`,
+     NOT `*.js` / `node:test` / `node --test`. Echo the resolved profile into each contract's
+     `stack_profile` so the coder inherits the same facts.
+3. **Then analyze the codebase — graph-first for symbols & flows.** Targeted single-file reads of a
+   SPECIFIC known file are allowed at ANY point (before OR after the graph — e.g. to inspect a config
+   or one sibling you found). The ONLY thing banned is repo-WIDE grep/scan (it pulls
+   node_modules/.gitnexus → 413 crash). Use the graph for structure:
    - `gitnexus_query("<concept>")` — find existing flows/patterns for the feature's concepts.
    - `gitnexus_context({name})` — a key symbol's callers/callees.
    - `gitnexus_impact({target, direction:"upstream"})` — blast radius of areas the feature will touch.
    - `gitnexus_route_map` / `gitnexus_tool_map` — for HTTP routes / UI composables.
    - `serena.find_symbol` / `get_symbols_overview` — exact symbols & file structure.
-   - **Detect the real stack — never guess.** Read the manifest/config (`package.json` scripts+deps,
-     `tsconfig*`, `bunfig.toml`, lockfiles) AND ≥1 existing sibling/test file in the target module to
-     derive (a) language + file extension, (b) test-file naming + location (colocated vs `test/`),
-     (c) the exact local test command. Every `files_to_touch` path and `verification_commands` entry
-     MUST match that evidence — e.g. siblings `src/foo.ts`/`src/foo.test.ts` + `package.json`
-     `"test": "bun test"` → plan `*.ts` / `*.test.ts` + `bun test`, NOT `*.js` / `node:test` / `node --test`.
-3. **Discover-before-plan (mandatory for every "build new X" item):** run `gitnexus_query` for the concept.
+4. **Discover-before-plan (mandatory for every "build new X" item):** run `gitnexus_query` for the concept.
    - Match found → the resulting contract MUST carry `reuse_patterns:` (symbol + how to use) and
      `forbidden_duplicates:` (what NOT to recreate).
    - No match → `reuse_patterns: []` + `reuse_patterns_note: "checked via gitnexus_query('<concept>'), no match"`.
@@ -47,23 +61,23 @@ skill_hints: [...]
      layout/conventions from the docs + graph) and HOW it is wired in — what imports / exports / registers it
      (barrel file, route table, DI container, index re-export, config entry). Put the path in `files_to_touch`
      and the wiring steps in the contract `scope`. A "new file" with no wiring is usually an integration miss.
-4. **Produce output at the requested `depth`:**
+5. **Produce output at the requested `depth`:**
    - `depth: express` (trivial change) — SKIP the heavy SPEC. Return the **real file map** (which files /
      symbols the change touches + blast radius) and **1-2 flat contracts**; keep `result.spec` to one line.
    - `depth: full` (feature) — write a short SPEC (goal, observable outcomes, touched areas + blast radius,
      key links, verification plan incl. negative scenarios, simplicity check — no over-engineering).
-5. **Decompose into atomic task contracts:**
+6. **Decompose into atomic task contracts:**
    - one task = one logical unit (~2-5 min coder time), ≤2 files OR ≤100 lines;
    - test tasks SEPARATE from implementation; refactor tasks SEPARATE from feature tasks;
    - dependencies form a DAG (test depends on its impl; UI depends on its API; migration first).
-6. **Classify `risk_class`** (auth/payments/schema → high; api/lib → medium; UI/docs → low).
-7. **Assign each task an `assignee_agent`:** `worker-coder` (backend/API/DB/general), `worker-frontend`
+7. **Classify `risk_class`** (auth/payments/schema → high; api/lib → medium; UI/docs → low).
+8. **Assign each task an `assignee_agent`:** `worker-coder` (backend/API/DB/general), `worker-frontend`
    (UI/styling/motion/markup), `worker-refactor-architect` (restructure planning). Verifiers
    (test/security/payments/ui) are orchestrator-spawned review gates, NOT assignees.
-8. **Fill `skill_hints` per task** with ONLY the task-specific OPTIONAL skills (pick by description
+9. **Fill `skill_hints` per task** with ONLY the task-specific OPTIONAL skills (pick by description
    from "Available skills" in `prompts/skills-catalog.md`). Do NOT list the role's DEFAULT skills —
    each worker auto-loads its own defaults; repeating them just wastes context.
-9. **Return the YAML result block** (§3).
+10. **Return the YAML result block** (§3).
 
 ## 3. Output format (return to Claude Code)
 ````yaml
@@ -88,6 +102,7 @@ result:
       dependencies: []
       assignee_agent: worker-coder
       verification_commands: [...]
+      stack_profile: {file_ext: .ts, test_command: bun test, test_file: "*.test.ts colocated"}  # resolved facts, so the coder inherits them
       reuse_patterns: []          # or [{symbol, how}]
       context_refs: [docs/plans/<feature>/SPEC.md, docs/plans/<feature>/glossary.md]
       skill_hints: [...]

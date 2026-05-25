@@ -89,6 +89,11 @@ All planning is dispatched via the async flow (`async_start` → **`async_wait`*
 
 **Feed the project's own docs to the planner.** Before dispatching, locate them with Bash `ls`/`find` (NOT by reading source) and pass them in the contract's `context_refs`: `architecture.md`, `docs/index.md`, `docs/**`, `README*`, `CLAUDE.md` / `PROJECT.md`, any `glossary.md`. The planner reads these FIRST, then walks the code graph — so the plan reflects the real project, not a shallow guess.
 
+**Detect the `stack_profile` ONCE and inject it (kills the planner's stack-guessing).** The test runner lives in `package.json` `scripts.test`, which the code graph does NOT index — so a graph-only planner cannot see `bun test` vs `node --test` and falls back to a wrong generic guess. YOU can read it cheaply: `package.json` is **config, not source**, so `Read`-ing it is allowed (and an `ls` of the target dir for the dominant extension). Before dispatching the planner, build a `stack_profile` and pass it in the planner contract (and it propagates into every coder/frontend contract the planner emits):
+- `Read package.json` → `test_command` from `scripts.test` (e.g. `bun test`), module system from `type`;
+- `ls`/`find` the likely target dir → dominant `file_ext` (`.ts`/`.js`/`.py`/…) and `test_file` convention (colocated `*.test.ts` vs `test/`);
+- emit `stack_profile: {language, file_ext, test_command, test_file}`. This is authoritative — the planner uses it verbatim instead of guessing. (Reading `package.json`/config is permitted; the "never read source" rule still bans `cat`/`grep` on `*.ts`/`*.js`/`*.py` source files.)
+
 When the planner returns (parse its single `result:` block — see Result envelope):
 - (`depth: full`) write `result.spec` to `docs/plans/<feature-name>/SPEC.md`;
 - iterate `result.contracts` and pipe each into `task insert -` (set `dependencies` to chain them).
