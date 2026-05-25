@@ -3,6 +3,44 @@
 All notable changes to this MCP server are documented here.
 Все значимые изменения этого MCP-сервера документируются здесь.
 
+## v1.3.0 — agy usage accounting, tmux hygiene, bundled skill pack (2026-05-25)
+
+### English
+
+Built end-to-end by the parallel `dev-orchestrator-agy` team (fan-out workers + lead integration), then hardened.
+
+**New feature — agy usage accounting + tmux session hygiene**
+- `get_usage_stats` MCP tool: all-time counters (jobs started/succeeded/failed, prompt/output chars, agy seconds, estimated tokens) persisted to `.claude/agy-usage.json`.
+- New utils: `token-estimate`, `usage-store`, `usage-format`, `session-gc`.
+- Startup sweep of completed/orphan tmux job sessions; `SIGTERM`/`SIGINT` cleanup. Session names are allowlisted before any `tmux` shell call.
+
+**Bundled programming skill pack (94 skills)** under `/skills` + `scripts/install-skills.sh` (installs into `~/.agents/skills`, the agy skills dir). Craft, languages, frontend, backend/data, integrations, testing. Marketing / SEO / design-creative / third-party skills excluded.
+
+**Post-verification hardening**
+- Crash monitor no longer false-kills a finished-but-unpolled job whose output happens to contain a marker string (skips jobs that already wrote `exit_code.txt`).
+- Usage is now recorded on the exit-code-read failure path too; the best-effort telemetry catch blocks are documented (no silent swallow).
+- Dropped the phantom `clean-code` skill reference from `worker-coder` defaults + catalog.
+
+`bun test`: **109 passing**.
+
+### Русский
+
+Построено end-to-end параллельной командой `dev-orchestrator-agy` (воркеры веером + интеграция lead-агентом), затем укреплено.
+
+**Новая фича — учёт использования agy + гигиена tmux-сессий**
+- MCP-инструмент `get_usage_stats`: счётчики за всё время (джобы запущены/успешно/упало, объём промптов/ответов, секунды agy, оценка токенов) в `.claude/agy-usage.json`.
+- Новые утилиты: `token-estimate`, `usage-store`, `usage-format`, `session-gc`.
+- Уборка завершённых/осиротевших tmux-сессий при старте; очистка по `SIGTERM`/`SIGINT`. Имена сессий проходят whitelist перед любым shell-вызовом `tmux`.
+
+**Набор программистских скиллов (94)** в `/skills` + `scripts/install-skills.sh` (ставит в `~/.agents/skills` — папку скиллов agy). Дисциплина кода, языки, фронтенд, бэкенд/данные, интеграции, тесты. Маркетинг / SEO / дизайн-креатив / сторонние — исключены.
+
+**Укрепление после диагностики**
+- Кран-монитор больше не убивает по ошибке завершённую-но-неопрошенную джобу, в выводе которой случайно есть строка-маркер (пропускает джобы с уже записанным `exit_code.txt`).
+- Учёт теперь пишется и на пути сбоя чтения exit-code; best-effort telemetry-catch'и снабжены пояснениями (без молчаливого глотания).
+- Убрана фантомная ссылка на скилл `clean-code` из дефолтов `worker-coder` и каталога.
+
+`bun test`: **109 проходят**.
+
 ## v1.2.0 — Parallel-safe dispatch & parallel orchestrator (2026-05-25)
 
 ### English

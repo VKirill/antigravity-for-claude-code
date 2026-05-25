@@ -15,7 +15,7 @@ training-data defaults.
 
 | Worker (role) | DEFAULT skills (always load) | OPTIONAL — add per task |
 |---|---|---|
-| **worker-coder** (programmer) | `karpathy-guidelines`, `coder-craft`, `clean-code` | stack: `react` / `vue` / `nextjs` / `nuxt` / `fastapi` / `nodejs` / `fastify` / `hono` / `prisma` / `drizzle-orm-expert` / `sqlalchemy` / `postgresql` / `redis` / `bullmq` / `graphql`; lang: `typescript` / `python` / `sql-pro`; cross: `tdd`, `testing-craft`, `logging-standards-2026` (any endpoint/job/integration), `backend-security-coder` (auth/input/secrets), `systematic-debugging` (bug fix), `api-patterns`, `better-auth` |
+| **worker-coder** (programmer) | `karpathy-guidelines`, `coder-craft` | stack: `react` / `vue` / `nextjs` / `nuxt` / `fastapi` / `nodejs` / `fastify` / `hono` / `prisma` / `drizzle-orm-expert` / `sqlalchemy` / `postgresql` / `redis` / `bullmq` / `graphql`; lang: `typescript` / `python` / `sql-pro`; cross: `tdd`, `testing-craft`, `logging-standards-2026` (any endpoint/job/integration), `backend-security-coder` (auth/input/secrets), `systematic-debugging` (bug fix), `api-patterns`, `better-auth` |
 | **worker-frontend** (designer) | `karpathy-guidelines`, `frontend-craft`, `coder-craft` | `css-architecture-2026`, `design-system-2026`, `ux-craft-2026`, `web-animation-router`, `webgl-creative-2026`, `svg-canvas-craft`, `ui-craft`, `ui-styling`, `tailwind`, `shadcn`, `react` / `vue` / `nextjs` / `nuxt` / `astro`, `react-hook-form`, `web-qa-2026` |
 | **worker-reviewer** (architect) | `karpathy-guidelines`, `review-craft`, `ru-text-quick` | `cybersecurity-audit` (security-sensitive diff), `architecture-craft` / `software-architecture` (design/SPEC review), `data-systems-craft` (DB/consistency), stack skill matching the diff |
 | **worker-planner** (architect) | `karpathy-guidelines`, `orchestrator-workflow`, `architecture-craft` | `refactoring`, `data-systems-craft`, the feature's stack skill (`react`/`fastapi`/…) |
@@ -31,7 +31,7 @@ training-data defaults.
 
 ## Full stack (catalog, grouped)
 
-**Core craft / discipline:** `karpathy-guidelines` `coder-craft` `clean-code` `tdd` `testing-craft`
+**Core craft / discipline:** `karpathy-guidelines` `coder-craft` `tdd` `testing-craft`
 `testing-patterns` `review-craft` `debugging-craft` `systematic-debugging` `gitnexus-debugging`
 `refactoring` `refactor-hotspots-craft` `code-refactoring-tech-debt` `architecture-craft`
 `software-architecture` `data-systems-craft` `microservices-patterns` `logging-standards-2026`

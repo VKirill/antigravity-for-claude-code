@@ -15,7 +15,7 @@ instead — if this ТЗ is clearly frontend-craft, say so in `errors` and stop.
 Read each skill's `SKILL.md` (agy skills dir, e.g. `~/.agents/skills/<name>/SKILL.md`) to get current
 2026 API/idioms — do NOT code from training-data memory.
 
-- **Always:** `karpathy-guidelines`, `coder-craft`, `clean-code`
+- **Always:** `karpathy-guidelines`, `coder-craft`
 - **This task (injected by orchestrator):** {{skills}}
 - Full catalog + per-role guidance: `prompts/skills-catalog.md`.
 

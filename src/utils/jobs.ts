@@ -41,18 +41,24 @@ function recordJobEndSafely(jobId: string, success: boolean, durationMs: number)
     let prompt = "";
     try {
       prompt = readFileSync(join(getJobDir(jobId), "prompt.txt"), "utf-8");
-    } catch (e: unknown) {}
+    } catch {
+      // best-effort: unreadable prompt just counts as 0 chars
+    }
     let output = "";
     try {
       output = readFileSync(join(getJobDir(jobId), "output.txt"), "utf-8");
-    } catch (e: unknown) {}
+    } catch {
+      // best-effort: unreadable output just counts as 0 chars
+    }
     recordJobEnd({
       success,
       outputChars: output.length,
       durationMs,
       estimatedTokens: estimateTokens(prompt + output),
     });
-  } catch (e: unknown) {}
+  } catch {
+    // telemetry must never break the job lifecycle
+  }
 }
 
 // Helpers to get paths
@@ -204,7 +210,11 @@ export function startTmuxJob(
   };
 
   saveJobMeta(meta);
-  try { recordJobStart({ promptChars: prompt.length }); } catch (e: unknown) {}
+  try {
+    recordJobStart({ promptChars: prompt.length });
+  } catch {
+    // telemetry best-effort
+  }
 
   // Initialize/start the background crash monitor if not running
   startCrashMonitor();
@@ -266,8 +276,10 @@ export function getJobStatus(jobId: string): JobMeta {
     } catch (e) {
       // Soft fail parsing code, treat as failed
       meta.status = "failed";
+      meta.durationMs = meta.durationMs ?? (Date.now() - meta.startTime);
       meta.error = `Error reading exit code: ${e instanceof Error ? e.message : String(e)}`;
       saveJobMeta(meta);
+      recordJobEndSafely(jobId, false, meta.durationMs);
     }
   } else {
     // Not finished yet. Let's see if tmux session is still active
@@ -342,6 +354,10 @@ export function startCrashMonitor(): void {
       if (meta.status !== "running") continue;
 
       activeCount++;
+      // A job that already wrote its exit code has finished — it just hasn't been
+      // polled yet. Never early-kill it: its own output may legitimately contain a
+      // marker string (e.g. the markers literally appear in this repo's source/tests).
+      if (existsSync(join(getJobDir(jobId), "exit_code.txt"))) continue;
       const outputFile = join(getJobDir(jobId), "output.txt");
       const marker = scanFatalMarker(outputFile);
       if (marker) {
