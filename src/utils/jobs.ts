@@ -1,6 +1,6 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, openSync, readSync, closeSync } from "fs";
 import { join } from "path";
-import { execSync, spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { logLifecycleEvent, captureGitFiles, buildFooter } from "./observability.ts";
 import { recordJobStart, recordJobEnd } from "./usage-store.ts";
 import { estimateTokens } from "./token-estimate.ts";
@@ -112,7 +112,7 @@ export function loadJobMeta(jobId: string): JobMeta | null {
 // Helper to check if tmux session is active
 export function isTmuxSessionActive(jobId: string): boolean {
   try {
-    execSync(`tmux has-session -t "${jobId}"`, { stdio: "ignore" });
+    execFileSync("tmux", ["has-session", "-t", jobId], { stdio: "ignore" });
     return true;
   } catch (e) {
     return false;
@@ -122,7 +122,7 @@ export function isTmuxSessionActive(jobId: string): boolean {
 // Helper to kill tmux session
 export function killTmuxJobSession(jobId: string): void {
   try {
-    execSync(`tmux kill-session -t "${jobId}"`, { stdio: "ignore" });
+    execFileSync("tmux", ["kill-session", "-t", jobId], { stdio: "ignore" });
   } catch (e) {
     // ignore
   }
@@ -181,12 +181,14 @@ export function startTmuxJob(
     }
   }
 
-  // Create redirect bash command
-  const bashCommand = `${envPrefix}cd '${projectCwd}' && ${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
+  // Redirect command. cwd is set by tmux's -c flag below, so no `cd` here
+  // (keeps a project path that contains a quote from breaking the shell string).
+  const bashCommand = `${envPrefix}${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
 
-  // Start tmux session in background
+  // Start tmux session in background. execFileSync (no outer shell) so jobId and
+  // projectCwd cannot inject shell metacharacters into the tmux command line.
   try {
-    execSync(`tmux new-session -d -s "${jobId}" -c "${projectCwd}" "${bashCommand}"`, { stdio: "ignore" });
+    execFileSync("tmux", ["new-session", "-d", "-s", jobId, "-c", projectCwd, bashCommand], { stdio: "ignore" });
   } catch (err) {
     const errorMsg = `Failed to start tmux session: ${err instanceof Error ? err.message : String(err)}`;
     const failedMeta: JobMeta = {

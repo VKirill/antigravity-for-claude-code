@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
 
@@ -18,7 +18,7 @@ export function sweepOrphanJobSessions(): { killed: string[] } {
   let stdout = "";
 
   try {
-    stdout = execSync('tmux list-sessions -F "#{session_name}"', {
+    stdout = execFileSync("tmux", ["list-sessions", "-F", "#{session_name}"], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -49,7 +49,7 @@ export function sweepOrphanJobSessions(): { killed: string[] } {
     try {
       if (existsSync(markerPath)) {
         try {
-          execSync(`tmux kill-session -t "${sessionName}"`, { stdio: "ignore" });
+          execFileSync("tmux", ["kill-session", "-t", sessionName], { stdio: "ignore" });
           killed.push(sessionName);
         } catch (killErr: unknown) {
           // kill failures are swallowed
@@ -72,7 +72,7 @@ export function killSessions(jobIds: string[]): void {
       continue;
     }
     try {
-      execSync(`tmux kill-session -t "${id}"`, { stdio: "ignore" });
+      execFileSync("tmux", ["kill-session", "-t", id], { stdio: "ignore" });
     } catch (err: unknown) {
       // Kill failures are swallowed
     }

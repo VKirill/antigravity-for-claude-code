@@ -214,6 +214,33 @@ mock.module("child_process", () => {
         return "";
       }
       return Buffer.from("", "utf-8");
+    },
+    execFileSync: (file: string, args?: string[], options?: { encoding?: string; stdio?: unknown }): string | Buffer => {
+      // Mirror the execSync mock but for the no-shell execFileSync(file, argv) form.
+      // Reconstruct the canonical command string (quoting values after -t/-F/-s/-c)
+      // so existing session-gc assertions keep working against execSyncCalls.
+      const argv = Array.isArray(args) ? args : [];
+      const valueFlags = new Set(["-t", "-F", "-s", "-c"]);
+      const parts = [file];
+      for (let i = 0; i < argv.length; i++) {
+        parts.push(i > 0 && valueFlags.has(argv[i - 1]) ? `"${argv[i]}"` : argv[i]);
+      }
+      const cmd = parts.join(" ");
+      execSyncCalls.push(cmd);
+      if (argv[0] === "list-sessions") {
+        if (mockExecSyncShouldThrow) {
+          throw new Error("tmux: server not running");
+        }
+        const output = mockTmuxSessions.join("\n") + "\n";
+        return options?.encoding === "utf-8" ? output : Buffer.from(output, "utf-8");
+      }
+      if (argv[0] === "kill-session") {
+        if (cmd.includes("fail-id") || mockKillShouldThrow) {
+          throw new Error("Simulated kill failure");
+        }
+        return options?.encoding === "utf-8" ? "" : Buffer.from("", "utf-8");
+      }
+      return options?.encoding === "utf-8" ? "" : Buffer.from("", "utf-8");
     }
   };
 });

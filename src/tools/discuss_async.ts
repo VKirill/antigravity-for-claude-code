@@ -5,7 +5,7 @@ import { buildFooter } from "../utils/observability.ts";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
-export async function handleDiscussWithAntigravityAsyncStart(args: any) {
+export async function handleDiscussWithAntigravityAsyncStart(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
   const prompt = String(args?.prompt || "");
   if (!prompt) {
     return { content: [{ type: "text", text: "Error: prompt is required" }], isError: true };
@@ -81,17 +81,20 @@ export async function handleDiscussWithAntigravityAsyncStart(args: any) {
   };
 }
 
-export async function handleDiscussWithAntigravityAsyncStatus(args: any) {
+export async function handleDiscussWithAntigravityAsyncStatus(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
   const jobId = String(args?.jobId || "");
   if (!jobId) {
     return { content: [{ type: "text", text: "Error: jobId is required" }], isError: true };
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(jobId)) {
+    return { content: [{ type: "text", text: "Error: invalid jobId" }], isError: true };
   }
 
   let meta;
   try {
     meta = getJobStatus(jobId);
-  } catch (e: any) {
-    return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+  } catch (e) {
+    return { content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
   }
 
   let logTail = "";
@@ -125,17 +128,20 @@ export async function handleDiscussWithAntigravityAsyncStatus(args: any) {
   };
 }
 
-export async function handleDiscussWithAntigravityAsyncResult(args: any) {
+export async function handleDiscussWithAntigravityAsyncResult(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
   const jobId = String(args?.jobId || "");
   if (!jobId) {
     return { content: [{ type: "text", text: "Error: jobId is required" }], isError: true };
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(jobId)) {
+    return { content: [{ type: "text", text: "Error: invalid jobId" }], isError: true };
   }
 
   let meta;
   try {
     meta = getJobStatus(jobId);
-  } catch (e: any) {
-    return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+  } catch (e) {
+    return { content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
   }
 
   if (meta.status === "running") {
@@ -151,8 +157,8 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) {
     if (existsSync(outputFile)) {
       responseText = readFileSync(outputFile, "utf-8");
     }
-  } catch (e: any) {
-    return { content: [{ type: "text", text: `Error reading output file: ${e.message}` }], isError: true };
+  } catch (e) {
+    return { content: [{ type: "text", text: `Error reading output file: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
   }
 
   const durationMs = meta.durationMs || (Date.now() - meta.startTime);
