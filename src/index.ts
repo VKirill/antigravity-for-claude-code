@@ -16,6 +16,7 @@ import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
 import { getActiveRunningJobIds, harvestCompletedOrphans } from "./utils/jobs.ts";
 
 export { chunk } from "./utils/chunk.ts";
+export { uniqueBy } from "./utils/uniqueBy.ts";
 
 export const server = new Server(
   {
