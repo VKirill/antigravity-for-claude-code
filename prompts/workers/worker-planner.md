@@ -37,6 +37,10 @@ skill_hints: [...]
    - Match found → the resulting contract MUST carry `reuse_patterns:` (symbol + how to use) and
      `forbidden_duplicates:` (what NOT to recreate).
    - No match → `reuse_patterns: []` + `reuse_patterns_note: "checked via gitnexus_query('<concept>'), no match"`.
+   - **Even a brand-new isolated file is YOUR call, not the PM's:** decide its exact path (per the project's
+     layout/conventions from the docs + graph) and HOW it is wired in — what imports / exports / registers it
+     (barrel file, route table, DI container, index re-export, config entry). Put the path in `files_to_touch`
+     and the wiring steps in the contract `scope`. A "new file" with no wiring is usually an integration miss.
 4. **Produce output at the requested `depth`:**
    - `depth: express` (trivial change) — SKIP the heavy SPEC. Return the **real file map** (which files /
      symbols the change touches + blast radius) and **1-2 flat contracts**; keep `result.spec` to one line.

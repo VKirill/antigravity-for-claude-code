@@ -3,6 +3,26 @@
 All notable changes to this MCP server are documented here.
 Все значимые изменения этого MCP-сервера документируются здесь.
 
+## v1.6.1 — Enforce discovery-first; planner owns file placement (2026-05-25)
+
+### English
+
+A live test run revealed the PM still **self-composing a contract** for a "trivial" task and skipping the planner — the prompt said "always discover" but didn't *enforce* it. Fixed:
+
+- **Enforcement hook** (`scripts/guard-orchestrator-agy-require-planner.sh`): blocks `task insert` of a `worker-coder`/`worker-frontend` contract unless a `worker-planner` discovery job has run this session. The PM can no longer skip discovery, even on trivial tasks.
+- **Planner owns file placement + wiring:** even a brand-new isolated file is the planner's call — it decides the exact path and how it is wired (imports / exports / registration / route table / DI), not the PM.
+- **Standing rule:** the orchestrator never composes an implementation contract from its own judgment — every impl contract comes from a planner run.
+- **Observability:** `orchestrator-trace` hook now covers `dev-orchestrator-agy` + all `worker-*` (was `dev-orchestrator` only), so PM tool calls are traced.
+
+### Русский
+
+Живой прогон показал, что PM всё ещё **сам сочиняет контракт** на «тривиальной» задаче, минуя планировщика — промт говорил «всегда discovery», но не *принуждал*. Исправлено:
+
+- **Хук-принуждение** (`scripts/guard-orchestrator-agy-require-planner.sh`): блокирует `task insert` контракта `worker-coder`/`worker-frontend`, если в этой сессии не было discovery-джобы `worker-planner`. PM больше не может пропустить discovery даже на тривиальном.
+- **Планировщик владеет размещением + вшиванием файла:** даже новый изолированный файл — его решение: где лежит и как вшит (импорты / экспорты / регистрация / роут-таблица / DI), а не PM.
+- **Standing-rule:** оркестратор никогда не сочиняет implementation-контракт сам — только из прогона планировщика.
+- **Наблюдаемость:** хук `orchestrator-trace` теперь покрывает `dev-orchestrator-agy` + все `worker-*` (был только `dev-orchestrator`), трейс PM пишется.
+
 ## v1.6.0 — Pure-PM orchestrator + discovery-first (2026-05-25)
 
 ### English
