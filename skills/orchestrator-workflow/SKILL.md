@@ -138,6 +138,8 @@ If cwd is `~/.claude/`, `/tmp/<scratch>/`, or anywhere not a typical project —
 
 ## Dispatch loop — Phase 4 replacement
 
+> **`dev-orchestrator-agy` note:** the sequential, Agent-tool loop below is the reference for the *native* orchestrator. The **agy** orchestrator owns its own **parallel** fan-out/fan-in loop over the Antigravity async MCP (`async_start`/`_status`/`_result`) — see its Phase 4. The DB / contract / recovery rules here still apply unchanged; only the dispatch mechanism differs (parallel async jobs vs serial Agent calls). Do not follow the serial pseudocode literally when running as `dev-orchestrator-agy`.
+
 Replace per-task implementation-in-main with this loop:
 
 ```

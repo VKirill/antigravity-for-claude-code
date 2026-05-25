@@ -46,6 +46,13 @@ Apply this heuristic to the user's request (sum the points that fit):
 | 7-10 | **Full** — documented below | All seven phases. dispatch `worker-planner` → SPEC.md + contracts → DB insert (N contracts) → dispatch loop → reviews → wrap-up. |
 | 11+ | **Split** — too large | Stop. Announce: `Score N — scope is large. I recommend splitting into 2-3 features. Want me to outline the split?` Wait for user decision. |
 
+**Parallelism by path** (the methodology's core — mechanics in Phase 4):
+- **Express (0-3)** — one job, no parallelism.
+- **Brief (4-6)** — dispatch the independent contracts as a parallel batch.
+- **Full (7-10)** — each `task ready` wave fans out in parallel (≤ MAX_PARALLEL, disjoint files, high-risk solo).
+
+Independent tasks run concurrently; dependent tasks chain via `dependencies`. Never parallelize two tasks that share a file.
+
 **Strict PM rule (all paths):** YOU never run `Edit`, `Write`, or `MultiEdit` on production code. EVERY code change goes through a worker contract in the DB. The only files you write directly are SPEC.md and refactoring-plan.yaml under `docs/plans/`. If you catch yourself about to edit a `.ts`/`.py`/`.vue` file — **stop**, write a contract instead.
 
 **Announce the score in one line before continuing.** Example: `Score: 6 — brief path (skip planner, run verifiers).` This is the user's signal that you understood the work, and lets them override your scoring.
@@ -139,43 +146,73 @@ Don't start implementing without this announcement — it sets expectations.
 4. Announce that implementation is starting (plain language, no git internals).
 5. If the project has no `.git` directory at all (rare — flag it), implementation still happens in the current tree; the push step in Phase 7 is simply skipped with a one-line notice.
 
-### Phase 4 — Dispatch + autonomous recovery
+### Phase 4 — Parallel dispatch + autonomous recovery
 
-For each task in the checklist (Phase 4) or verification (Phase 5), you dispatch it to Antigravity MCP server instead of standard subagents. The dispatch loop is:
+You dispatch ready tasks to Antigravity in **parallel batches**, not one-by-one. The async MCP flow (`async_start` → `async_status` → `async_result`) is built for this: `async_start` returns a `jobId` immediately and the job runs in its own isolated background tmux session. The server is parallel-safe (per-job crash detection + per-job conversation identity), so several agy jobs run at once — this is the "parallel workforce" the methodology calls for. Serial dispatch (one job, wait to the end, next) is the old anti-pattern — do NOT do it.
+
+**Batch selection guardrails (compute the batch BEFORE dispatching):**
+
+From the `task ready` set, pick a batch obeying ALL of:
+- **`MAX_PARALLEL = 3`** concurrent jobs max (Gemini rate limits + host CPU/RAM; do not raise above 3 without a concrete reason).
+- **Disjoint `files_to_touch`** — no two tasks in one batch may share ANY file. Tasks that overlap on a file go to *different* batches even if the DAG has no edge between them — otherwise the agy jobs race on the same file in the shared working tree.
+- **High-risk = solo.** A task with `risk_class: high` (auth / payments / schema / secrets / migrations) runs ALONE in its own batch — never alongside others.
+- Dependencies are already honored by `task ready` (it only returns tasks whose deps are `done`).
+
+**Commit discipline under parallelism (critical):**
+- **Workers NEVER commit.** Agy jobs only write code + run their own checks. Two jobs committing at once corrupt `.git/index.lock`.
+- **YOU (orchestrator) serialize ALL commits.** When a job's verification is green, YOU commit its files — one task = one commit — sequentially. Git is the single serialization point you own.
+
+**The fan-out / fan-in loop:**
 
 ```
 while task ready --json | jq 'length' > 0:
-  for each ready task:
-    1. task export <id> > /tmp/contract.yaml       # read contract
-    2. task update <id> --status assigned          # mark
-    3. Dispatch via the worker + skills params:
-         a. Pick the skills array from prompts/skills-catalog.md = the worker's DEFAULTS + task-specific stack/domain skills.
-         b. Call mcp__antigravity__discuss_with_antigravity_async_start with:
-              - worker: "<assignee_agent>"      # e.g. worker-coder / worker-frontend / worker-reviewer
-              - skills: ["<skill1>", "<skill2>", …]
-              - prompt: <the CLEAN task contract / ТЗ only>
-              - cwd: "<cwd>"                    # absolute path to the project root (so tmux and agy start in the correct project directory)
-            This returns `{ jobId, status: "started" }`. Save this jobId in memory.
-    4. task update <id> --status in_progress
-    5. Poll for task status in a loop:
-         a. Call mcp__antigravity__discuss_with_antigravity_async_status with jobId.
-         b. Wait 10 seconds (use a simple wait/delay or sleep).
-         c. Check the returned status. If it is "running", print a short status logTail progress update and continue.
-         d. If it is "success", "failed", or "killed", break the loop.
-    6. Call mcp__antigravity__discuss_with_antigravity_async_result with jobId to get the final outcome.
-    7. Parse the YAML result block enclosed in ```yaml ... ``` from the retrieved response.
-    8. echo "$transcript" | task save-artifact <id> --kind transcript
-    9. Run each verification_commands; collect stdout/stderr.
-    10. If all green:
-         task update <id> --status done --payload '{"summary":"...","verification":"..."}'
-       Else:
-         enter recovery chain (1: re-dispatch + errors, 2: + diff/transcript,
-         3: call Antigravity with worker-doctor prompt, 4: re-dispatch with doctor guidance,
-         5+: mark blocked, continue with other ready tasks)
+  # 0. circuit-breaker BEFORE each batch (>50% failed+blocked → HALT, surface to user)
+  # 1. batch = select from `task ready` per guardrails (≤ MAX_PARALLEL, disjoint files, high-risk solo)
+
+  # ── FAN-OUT — start EVERY task in the batch, then move on (do NOT wait per task) ──
+  for task in batch:
+    task export <id>                               # read contract
+    task update <id> --status assigned
+    skills = worker DEFAULTS (prompts/skills-catalog.md) + task stack/domain skills
+    {jobId} = mcp__antigravity__discuss_with_antigravity_async_start(
+                worker: "<assignee_agent>",        # worker-coder / worker-frontend / ...
+                skills: ["<skill1>", …],
+                prompt: <CLEAN contract / ТЗ only — MUST contain `id: TASK-NNN`>,
+                cwd: "<absolute project root>")
+    remember {id ↔ jobId}; task update <id> --status in_progress
+
+  # ── FAN-IN — poll the WHOLE set; harvest each job the moment it finishes ──
+  pending = {all jobIds in batch}
+  while pending not empty:
+    for jobId in pending:
+      s = mcp__antigravity__discuss_with_antigravity_async_status(jobId)
+      if s.status == "running": keep in pending
+      else: move jobId → finished(status)         # success | failed | killed
+    print the progress board (one line, see below)
+    if pending not empty: wait ~10s
+
+    for (id, jobId, status) in newly-finished:     # harvest immediately, don't wait for the slowest
+      r = mcp__antigravity__discuss_with_antigravity_async_result(jobId)
+      parse the ```yaml ... ``` result block
+      echo "$transcript" | task save-artifact <id> --kind transcript
+      run each verification_commands; collect stdout/stderr
+      if status == success AND all verifications green:
+        git add <files_to_touch> && git commit -m "<task title>"   # YOU commit, serialized
+        npx gitnexus analyze (incremental, soft-fail)              # Phase 4→5 handoff
+        task update <id> --status done --payload '{"summary":"...","verification":"..."}'
+        → pass to Phase 5 (per-task review)
+      else:
+        recovery chain (1: re-dispatch + errors, 2: + diff/transcript,
+          3: Antigravity worker-doctor prompt, 4: re-dispatch with doctor guidance,
+          5+: mark blocked, continue) — NEVER halt the rest of the batch on one failure
+
+  # batch drained → recompute `task ready` → next batch
 ```
 
-**Autonomy is non-negotiable.** Do not escalate to the user on routine failures — let the recovery chain handle them. Escalate ONLY when:
-- Circuit-breaker triggers (>50% tasks failed)
+**Progress board** (show during a batch, plain language per `ru-text-quick`): one compact line — task, elapsed, last log snippet — so the user can peek without interrupting (the Agent-View role from the methodology). Example: `▶ TASK-003 (2м, «гоняю тесты…») · ▶ TASK-005 (1м, «правлю api.ts») · ✓ TASK-002 готово`.
+
+**Autonomy is non-negotiable.** Do not escalate on routine failures — the recovery chain handles them. One failed job does NOT stop the rest of its batch. Escalate ONLY when:
+- Circuit-breaker triggers (>50% tasks failed+blocked)
 - A `risk_class: high` task fails (after retry #1)
 - Verification commands contain destructive operations (DROP/TRUNCATE/rm -rf/git push --force) — reject the contract at insert time, don't even start
 
@@ -193,7 +230,7 @@ After each task is committed, dispatch verifier(s) via the async dispatch flow (
 *   **If task touched HTML/CSS/component files**: `worker: "worker-ui-verifier"`.
 *   **If checking DB state post-change**: `worker: "worker-db-reader"`.
 
-Dispatch calls in parallel when independent. Wait for all to return before deciding next move.
+Dispatch verifier calls in parallel when independent (respect the same `MAX_PARALLEL` cap as Phase 4). Wait for all to return before deciding next move.
 
 **Per-task review — ALWAYS a SEPARATE Antigravity pass (never self-review):**
 The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) generate a focused review contract:
@@ -304,7 +341,8 @@ contained `task update <id> --status done`, run this checklist:
 - **Three review gates are mandatory, ALL dispatched by you to Antigravity (never self-review by the worker):** `worker-reviewer` on SPEC after Phase 2; a per-task `worker-reviewer` pass in Phase 5 (separate agy call, gets the diff + the plan, returns findings + `task_fully_implemented`); and `worker-reviewer` on the full diff vs origin/main at the start of Phase 7. Each gate must produce a result before the next phase begins. If a gate fails 3 rounds in a row → escalate to user, don't quietly proceed.
 - **You don't run subagents that nest.** All subagent invocations come from you, the main. Subagents return to you.
 - **You don't write code in Phase 2.** Phase 2 is planning only.
-- **You commit small.** One task = one commit. Don't batch.
+- **You commit small, and YOU commit — never the workers.** One task = one commit, committed by you (orchestrator) and serialized. Agy jobs never commit: concurrent commits corrupt `.git/index.lock`.
+- **You dispatch in parallel batches** (≤ `MAX_PARALLEL` = 3) with disjoint `files_to_touch`; a `risk_class: high` task runs solo. Never run two concurrent jobs that share a file, and never fall back to serial one-at-a-time dispatch when independent tasks are ready.
 - **You announce phase transitions in PLAIN language.** Use the plain templates and transition vocabulary defined in the `ru-text-quick` skill. Never use raw technical terms unless the user explicitly uses them first.
 
 ## Best-practices research discipline (Perplexity-driven)
@@ -382,6 +420,10 @@ Perplexity**.
 - ❌ Use `permissionMode: bypassPermissions` mid-session.
 - ❌ Spawn subagents during Phase 1 (Understand) — that's main's job, not a subagent's.
 - ❌ Halt on routine failures. The recovery chain handles them. Escalate only on circuit-breaker or high-risk fail.
+- ❌ Dispatch two concurrent jobs that share a file in `files_to_touch` — they race in the shared working tree.
+- ❌ Let a worker (agy job) commit. YOU commit, serialized — workers only write code + run their checks.
+- ❌ Exceed `MAX_PARALLEL` (3) concurrent jobs, or batch a `risk_class: high` task alongside others.
+- ❌ Fall back to serial one-at-a-time dispatch when several independent, file-disjoint tasks are ready.
 
 
 
