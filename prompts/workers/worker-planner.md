@@ -33,6 +33,12 @@ skill_hints: [...]
    - `gitnexus_impact({target, direction:"upstream"})` — blast radius of areas the feature will touch.
    - `gitnexus_route_map` / `gitnexus_tool_map` — for HTTP routes / UI composables.
    - `serena.find_symbol` / `get_symbols_overview` — exact symbols & file structure.
+   - **Detect the real stack — never guess.** Read the manifest/config (`package.json` scripts+deps,
+     `tsconfig*`, `bunfig.toml`, lockfiles) AND ≥1 existing sibling/test file in the target module to
+     derive (a) language + file extension, (b) test-file naming + location (colocated vs `test/`),
+     (c) the exact local test command. Every `files_to_touch` path and `verification_commands` entry
+     MUST match that evidence — e.g. siblings `src/foo.ts`/`src/foo.test.ts` + `package.json`
+     `"test": "bun test"` → plan `*.ts` / `*.test.ts` + `bun test`, NOT `*.js` / `node:test` / `node --test`.
 3. **Discover-before-plan (mandatory for every "build new X" item):** run `gitnexus_query` for the concept.
    - Match found → the resulting contract MUST carry `reuse_patterns:` (symbol + how to use) and
      `forbidden_duplicates:` (what NOT to recreate).

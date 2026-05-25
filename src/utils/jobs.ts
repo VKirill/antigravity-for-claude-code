@@ -4,6 +4,7 @@ import { execFileSync, spawn } from "child_process";
 import { logLifecycleEvent, captureGitFiles, buildFooter } from "./observability.ts";
 import { recordJobStart, recordJobEnd } from "./usage-store.ts";
 import { estimateTokens } from "./token-estimate.ts";
+import { parseEnvelopeStrict } from "./result-envelope.ts";
 
 export interface JobMeta {
   jobId: string;
@@ -209,7 +210,12 @@ export function startTmuxJob(
 
   // Redirect command. cwd is set by tmux's -c flag below, so no `cd` here
   // (keeps a project path that contains a quote from breaking the shell string).
-  const bashCommand = `${envPrefix}${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
+  // Run agy under `setsid -w` (when available) so it gets its OWN session/process-group: an
+  // exit-time process-group signal from agy can no longer kill THIS shell before the trailing
+  // `echo $?` writes exit_code.txt (the intermittent "tmux session died before echo" bug). `-w`
+  // makes setsid WAIT and propagate agy's real exit code. Falls back to plain agy where setsid is
+  // absent (e.g. macOS) — the result.yaml sidecar fallback in getJobStatus covers that case.
+  const bashCommand = `${envPrefix}S=$(command -v setsid >/dev/null 2>&1 && echo 'setsid -w' || echo ''); $S ${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
 
   // Start tmux session in background. execFileSync (no outer shell) so jobId and
   // projectCwd cannot inject shell metacharacters into the tmux command line.
@@ -312,6 +318,25 @@ export function getJobStatus(jobId: string): JobMeta {
   } else {
     // Not finished yet. Let's see if tmux session is still active
     if (!isTmuxSessionActive(jobId)) {
+      // Session gone but no exit_code.txt. Before declaring a crash, TRUST the result.yaml
+      // sidecar: the worker writes it as its LAST action, so a valid envelope means the job
+      // actually completed — the trailing `echo $?` just lost the race to a process-group signal
+      // at agy exit. This stops spurious "crash" + retry on jobs that genuinely succeeded.
+      try {
+        const sidecarFile = join(jobDir, "result.yaml");
+        if (existsSync(sidecarFile) && parseEnvelopeStrict(readFileSync(sidecarFile, "utf-8")).ok) {
+          meta.status = "success";
+          meta.exitCode = 0;
+          meta.durationMs = Date.now() - meta.startTime;
+          try { meta.filesAfter = captureGitFiles(process.env.PWD || process.cwd()); } catch { /* best-effort */ }
+          saveJobMeta(meta);
+          recordJobEndSafely(jobId, true, meta.durationMs ?? 0);
+          logLifecycleEvent("agy.async.success", { jobId, exitCode: 0, durationMs: meta.durationMs, via: "sidecar" });
+          return meta;
+        }
+      } catch {
+        // unreadable / invalid sidecar → fall through to the failure path below
+      }
       // Unexpected death of session
       meta.status = "failed";
       meta.error = "Tmux session exited prematurely without writing exit code.";
