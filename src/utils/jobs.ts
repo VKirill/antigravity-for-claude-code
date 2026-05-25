@@ -16,6 +16,11 @@ export interface JobMeta {
   filesAfter?: string[];
   exitCode?: number | null;
   error?: string;
+  // First poll (epoch ms) that saw the tmux session gone WITHOUT an exit code or sidecar yet.
+  // Opens a grace window: agy's internal engine grandchild outlives the pane and flushes
+  // result.yaml a few seconds later, so we wait before declaring a crash. Cleared if the
+  // session turns out to still be alive. See the grace logic in getJobStatus.
+  deathSuspectedAt?: number;
   commandArgs?: string[];
 }
 
@@ -337,40 +342,66 @@ export function getJobStatus(jobId: string): JobMeta {
       saveJobMeta(meta);
       recordJobEndSafely(jobId, false, meta.durationMs);
     }
-  } else {
-    // Not finished yet. Let's see if tmux session is still active
-    if (!isTmuxSessionActive(jobId)) {
-      // Session gone but no exit_code.txt. Before declaring a crash, TRUST the result.yaml
-      // sidecar: the worker writes it as its LAST action, so a valid envelope means the job
-      // actually completed — the trailing `echo $?` just lost the race to a process-group signal
-      // at agy exit. This stops spurious "crash" + retry on jobs that genuinely succeeded.
-      try {
-        const sidecarFile = join(jobDir, "result.yaml");
-        if (existsSync(sidecarFile) && parseEnvelopeStrict(readFileSync(sidecarFile, "utf-8")).ok) {
-          meta.status = "success";
-          meta.exitCode = 0;
-          meta.durationMs = Date.now() - meta.startTime;
-          try { meta.filesAfter = captureGitFiles(process.env.PWD || process.cwd()); } catch { /* best-effort */ }
-          saveJobMeta(meta);
-          recordJobEndSafely(jobId, true, meta.durationMs ?? 0);
-          logLifecycleEvent("agy.async.success", { jobId, exitCode: 0, durationMs: meta.durationMs, via: "sidecar" });
-          return meta;
-        }
-      } catch {
-        // unreadable / invalid sidecar → fall through to the failure path below
-      }
-      // Unexpected death of session
-      meta.status = "failed";
-      meta.error = "Tmux session exited prematurely without writing exit code.";
-      meta.durationMs = Date.now() - meta.startTime;
+  } else if (isTmuxSessionActive(jobId)) {
+    // Still running. Clear any stale death suspicion (a transient has-session miss that recovered)
+    // so the grace timer below never accumulates against a job that is actually alive.
+    if (meta.deathSuspectedAt !== undefined) {
+      meta.deathSuspectedAt = undefined;
       saveJobMeta(meta);
-      recordJobEndSafely(jobId, false, meta.durationMs ?? 0);
-
-      logLifecycleEvent("agy.async.died", {
-        jobId,
-        durationMs: meta.durationMs,
-      });
     }
+  } else {
+    // Session gone but no exit_code.txt. FIRST trust the result.yaml sidecar: the worker writes it
+    // as its LAST action, so a valid envelope means the job actually completed — the trailing
+    // `echo $?` just lost the race to agy's exit. This recovers genuine successes without retries.
+    try {
+      const sidecarFile = join(jobDir, "result.yaml");
+      if (existsSync(sidecarFile) && parseEnvelopeStrict(readFileSync(sidecarFile, "utf-8")).ok) {
+        meta.status = "success";
+        meta.exitCode = 0;
+        meta.deathSuspectedAt = undefined;
+        meta.durationMs = Date.now() - meta.startTime;
+        try { meta.filesAfter = captureGitFiles(process.env.PWD || process.cwd()); } catch { /* best-effort */ }
+        saveJobMeta(meta);
+        recordJobEndSafely(jobId, true, meta.durationMs ?? 0);
+        logLifecycleEvent("agy.async.success", { jobId, exitCode: 0, durationMs: meta.durationMs, via: "sidecar" });
+        return meta;
+      }
+    } catch {
+      // unreadable / invalid sidecar → fall through to the grace / failure path below
+    }
+
+    // No sidecar yet, but the session is gone. This is NOT proof of death: agy spawns an internal
+    // ENGINE GRANDCHILD (see docs/plans/agy-process-lifecycle/SPEC.md) that outlives the tmux pane
+    // and flushes its output + result.yaml a few seconds LATER (observed ~14s). So open a GRACE
+    // window — keep the job "running" until the sidecar lands (caught above on a later poll) or the
+    // grace expires. The async_wait/status poll loops treat "running" as keep-waiting, so this is
+    // transparent to callers. Bounded by the wall-clock cap so a genuinely hung job still fails.
+    const now = Date.now();
+    const graceMs = Number(process.env.AGY_DEATH_GRACE_MS) || 30000;
+    const wallClockMs = Number(process.env.AGY_TIMEOUT_MS) || 1200000;
+    const overWallClock = now - meta.startTime > wallClockMs;
+    if (!overWallClock) {
+      if (meta.deathSuspectedAt === undefined) {
+        meta.deathSuspectedAt = now;        // first poll to see the session gone — start the clock
+        saveJobMeta(meta);
+        return meta;                        // still "running"
+      }
+      if (now - meta.deathSuspectedAt < graceMs) {
+        return meta;                        // within grace — keep waiting for the grandchild
+      }
+    }
+
+    // Grace expired (or past the wall-clock cap) and still no valid sidecar → genuine death.
+    meta.status = "failed";
+    meta.error = "Tmux session exited prematurely without writing exit code.";
+    meta.durationMs = now - meta.startTime;
+    saveJobMeta(meta);
+    recordJobEndSafely(jobId, false, meta.durationMs ?? 0);
+
+    logLifecycleEvent("agy.async.died", {
+      jobId,
+      durationMs: meta.durationMs,
+    });
   }
 
   return meta;

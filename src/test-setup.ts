@@ -227,6 +227,14 @@ mock.module("child_process", () => {
       }
       const cmd = parts.join(" ");
       execSyncCalls.push(cmd);
+      if (argv[0] === "has-session") {
+        // isTmuxSessionActive: `tmux has-session -t <jobId>` — throws when the session is gone.
+        const t = argv[argv.indexOf("-t") + 1];
+        if (!mockTmuxSessions.includes(t)) {
+          throw new Error("can't find session");
+        }
+        return options?.encoding === "utf-8" ? "" : Buffer.from("", "utf-8");
+      }
       if (argv[0] === "list-sessions") {
         if (mockExecSyncShouldThrow) {
           throw new Error("tmux: server not running");

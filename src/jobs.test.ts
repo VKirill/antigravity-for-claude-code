@@ -1,6 +1,7 @@
 import { test, expect, describe, beforeEach } from "bun:test";
-import { resetMockState, setMockFiles, setMockReadContent, mockFsFiles } from "./test-setup.ts";
+import { resetMockState, setMockFiles, setMockReadContent, setMockTmuxSessions, mockFsFiles } from "./test-setup.ts";
 import { scanFatalMarker, getJobStatus, getJobDir, saveJobMeta } from "./utils/jobs.ts";
+import type { JobMeta } from "./utils/jobs.ts";
 
 // Regression coverage for the parallel-safety fix in startCrashMonitor.
 // Previously the monitor scanned the SHARED newest ~/.gemini/.../cli-*.log and fired the
@@ -97,5 +98,63 @@ describe("getJobStatus — late sidecar recovery of a premature-death failure", 
 
     const meta = getJobStatus(jobId);
     expect(meta.status).toBe("failed");
+  });
+});
+
+// Regression coverage for the grace window. agy's internal engine grandchild outlives the tmux
+// pane and flushes result.yaml a few seconds after the session is gone. So a "session gone, no
+// exit code, no sidecar yet" poll must NOT fail immediately — it opens a grace window (stays
+// "running") until the sidecar lands or the grace expires. Root cause: agy-process-lifecycle SPEC.
+describe("getJobStatus — grace window for the agy grandchild flush", () => {
+  const VALID_ENVELOPE = "result:\n  summary: done\n  status: success\n  errors: []\n";
+
+  beforeEach(() => {
+    resetMockState();
+  });
+
+  function seedRunning(jobId: string, extra: Partial<JobMeta> = {}) {
+    saveJobMeta({ jobId, conversationId: null, status: "running", startTime: Date.now(), ...extra });
+  }
+
+  test("first session-gone poll opens the grace window (running, not failed)", () => {
+    const jobId = "task-grace-job-open";
+    seedRunning(jobId);
+    setMockTmuxSessions([]); // session gone; no sidecar seeded
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("running");
+    expect(typeof meta.deathSuspectedAt).toBe("number");
+  });
+
+  test("sidecar landing during the grace window → success", () => {
+    const jobId = "task-grace-job-sidecar";
+    seedRunning(jobId, { deathSuspectedAt: Date.now() - 5000 }); // already suspected, still in grace
+    setMockTmuxSessions([]);
+    mockFsFiles.set(`${getJobDir(jobId)}/result.yaml`, VALID_ENVELOPE);
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("success");
+    expect(meta.exitCode).toBe(0);
+  });
+
+  test("grace expired with still no sidecar → failed", () => {
+    const jobId = "task-grace-job-expired";
+    // suspected 40s ago (> 30s grace), started 41s ago (well under the wall-clock cap)
+    seedRunning(jobId, { startTime: Date.now() - 41000, deathSuspectedAt: Date.now() - 40000 });
+    setMockTmuxSessions([]);
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
+    expect(meta.error).toContain("exited prematurely");
+  });
+
+  test("a session that turns out alive clears a stale death suspicion", () => {
+    const jobId = "task-grace-job-alive";
+    seedRunning(jobId, { deathSuspectedAt: Date.now() - 5000 });
+    setMockTmuxSessions([jobId]); // session is alive after all
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("running");
+    expect(meta.deathSuspectedAt).toBeUndefined();
   });
 });
