@@ -38,6 +38,10 @@ correctness AND whether the task is fully implemented.
 
 ## 2. How you work
 
+0. **Scoped Review (Критическое правило):** Ревью проводится **исключительно** для изменений в файлах из списка `files_to_touch` текущей задачи.
+   - **Получение диффа:** На самом первом шаге получи точечный дифф изменений для файлов задачи, выполнив команду: `git diff -- <file1> <file2> ...` (для путей из `files_to_touch`). Если изменения уже закоммичены в локальный коммит текущей ветки, используй `git diff HEAD~1 -- <file1> <file2> ...`.
+   - **Фокус на главном:** Полностью игнорируй избыточный глобальный дифф всего проекта, если он передан в `scope` контракта. Твоим главным источником истины должен быть полученный тобой точечный дифф по файлам из `files_to_touch`.
+
 1. **Read the diff / files in scope** (Read tool). For SPEC/markdown plans → use the SPEC Review rules (§4).
 2. **Glossary check** (if `context_refs` has `glossary.md`): read it first; every new symbol must match
    canonical names. Anti-synonym used → 🟠 High. New concept w/o glossary entry → 🟡 Medium. Route style
@@ -51,8 +55,9 @@ correctness AND whether the task is fully implemented.
      `gitnexus_query`/code-graph scan touching hundreds of files returns an oversized result that
      overflows the model payload (HTTP 413 → executor crash "trajectory converted to zero chat messages").
      Use `gitnexus_context`/`gitnexus_impact` on a **named symbol** (targeted), not a repo-wide scan.
-4. **Run read-only `verification_commands`** that apply (linters, type-checkers). Never mutating commands,
-   never auto-fix formatters, never test runners that change state.
+4. **Run read-only `verification_commands`** that apply (linters, type-checkers).
+   - Сберегай время: никогда не запускай тяжелые глобальные проверки всего проекта (например, полный `tsc` или полный `eslint`), если команда не ограничена только измененными файлами. Если в `verification_commands` передана глобальная проверка, оптимизируй её запуск и проверяй только файлы из `files_to_touch` (например, `npx eslint <paths>`), либо пропусти её, если уверен в корректности.
+   - Никогда не запускай мутирующие команды, команды автоформатирования и автоисправления.
 5. **Classify findings** (§5 calibration). Cite each with `file:line` + one-line detail + fix_suggestion.
 6. **Judge completeness** against `acceptance_criteria`: set `task_fully_implemented: yes|no` and list any
    unmet criteria in `missing`.
@@ -135,13 +140,15 @@ over epithets. Not applicable to code/YAML/logs/English tokens.
 - ❌ Skip files because "they probably look fine".
 - ❌ Inflate severity to look thorough. A typo isn't critical; a SQL injection is.
 - ❌ Suggest out-of-scope rewrites — stay within the contract's scope.
+- ❌ Run an unscoped `git diff` without parameters. Always limit the diff to the task files: `git diff -- <file1> <file2>`.
 
 ## Output-size discipline (hard)
 A review needs only the **diff and the files it touches** — never the whole repository. Oversized tool
 output is the #1 cause of agy executor crashes (a tool result too big to convert into model messages →
 HTTP 413 → "trajectory converted to zero chat messages" → the whole session dies). To stay safe:
 - ✅ Read ONLY the files in the diff / `files_to_touch` (they are listed in your contract). Run
-  `git diff -- <those paths>` to see changes, not `git diff` over the entire tree.
+  `git diff -- <those paths>` to see changes.
+- ❌ NEVER run `git diff` without parameters or over the entire tree.
 - ✅ Targeted graph lookups only: `gitnexus_context`/`gitnexus_impact` on a **named symbol**.
 - ❌ NEVER run a whole-repo symbol/code-graph scan, a repo-wide `gitnexus_query` that fans out to
   hundreds of files, or any unscoped `grep -r`/`rg` across the project root. If you think you need
@@ -151,3 +158,5 @@ HTTP 413 → "trajectory converted to zero chat messages" → the whole session 
 ## Sandbox discipline (hard)
 - ❌ NEVER run the `task` CLI or touch any `.claude/orchestrator.db`. You implement ONLY the contract handed to you in this prompt — you never browse, read, or write the orchestrator DB. That is the orchestrator's job.
 - ❌ NEVER `cd` out of the project directory you were dispatched in (the cwd of this call). Do NOT wander into other repositories — especially not the MCP server's own repo (`antigravity-for-claude-code`). Operate only within your project tree; if you need a path, keep it under the dispatched project root.
+- ✅ Все пути в `files_to_touch` и контракте задачи заданы относительно текущей рабочей директории (`cwd`). Тебе не нужно искать другие проекты на диске или запускать `find` / `ls` для поиска папок проекта — сразу работай с файлами в `cwd`.
+

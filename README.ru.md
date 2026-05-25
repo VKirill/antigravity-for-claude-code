@@ -171,8 +171,8 @@ cp CLAUDE.global.md ~/.claude/CLAUDE.md
 
 ### 5. Установка скиллов разработчика
 ```bash
-mkdir -p ~/.gemini/antigravity/skills
-cp -r skills/* ~/.gemini/antigravity/skills/
+mkdir -p ~/.gemini/antigravity-cli/skills
+cp -r skills/* ~/.gemini/antigravity-cli/skills/
 ```
 
 ### 6. Установка хуков качества (рекомендуется)

@@ -90,6 +90,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               },
               description: "Skills the worker must load, injected into the worker instruction's {{skills}} placeholder.",
             },
+            cwd: {
+              type: "string",
+              description: "Optional custom working directory (absolute path) for the tmux session and agy run.",
+            },
           },
           required: ["prompt"],
         },

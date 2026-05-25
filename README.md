@@ -171,8 +171,8 @@ This sets sensible defaults for every project and documents the auto-push-to-`ma
 
 ### 5. Install the developer skills
 ```bash
-mkdir -p ~/.gemini/antigravity/skills
-cp -r skills/* ~/.gemini/antigravity/skills/
+mkdir -p ~/.gemini/antigravity-cli/skills
+cp -r skills/* ~/.gemini/antigravity-cli/skills/
 ```
 
 ### 6. Install the quality hooks (recommended)

@@ -154,6 +154,7 @@ while task ready --json | jq 'length' > 0:
               - worker: "<assignee_agent>"      # e.g. worker-coder / worker-frontend / worker-reviewer
               - skills: ["<skill1>", "<skill2>", …]
               - prompt: <the CLEAN task contract / ТЗ only>
+              - cwd: "<cwd>"                    # absolute path to the project root (so tmux and agy start in the correct project directory)
             This returns `{ jobId, status: "started" }`. Save this jobId in memory.
     4. task update <id> --status in_progress
     5. Poll for task status in a loop:
@@ -195,9 +196,15 @@ After each task is committed, dispatch verifier(s) via the async dispatch flow (
 Dispatch calls in parallel when independent. Wait for all to return before deciding next move.
 
 **Per-task review — ALWAYS a SEPARATE Antigravity pass (never self-review):**
-The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) dispatch a **separate** async dispatch flow call (Start -> Status Poll -> Result) with `worker: "worker-reviewer"` (+ skills from the catalog). That call MUST receive, in context:
-- the **diff** of the task (or the changed files),
-- the **plan it was built against** — the contract's `acceptance_criteria` + the relevant `docs/plans/.../SPEC.md`.
+The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) generate a focused review contract:
+1. Run `git diff HEAD~1 -- <files_to_touch>` (or `git diff -- <files_to_touch>` if changes are not committed yet) to get the exact diff for this task's files.
+2. Build a contract for `worker-reviewer`:
+   - `id`: `REVIEW-TASK-NNN` (where NNN is the task number)
+   - `scope`: The exact git diff obtained in step 1.
+   - `files_to_touch`: Only the files modified in this task.
+   - `acceptance_criteria`: The original contract's `acceptance_criteria`.
+   - `context_refs`: [`docs/plans/.../SPEC.md`]
+3. Dispatch a **separate** async dispatch flow call with `worker: "worker-reviewer"` and this new contract. This guarantees the reviewer receives ONLY the specific task diff and doesn't read the whole project.
 
 The reviewer MUST return, in its YAML:
 - `findings` — issues classified critical / high / medium / low (each with `file:line`),
@@ -275,8 +282,8 @@ contained `task update <id> --status done`, run this checklist:
    sqlite3 .claude/orchestrator.db "SELECT t.id, t.risk_class, t.contract_yaml FROM tasks t WHERE t.status='done' AND t.completed_at > datetime('now','-30 minutes') AND NOT EXISTS (SELECT 1 FROM task_artifacts a WHERE a.task_id=t.id AND a.kind='worker_review');"
    ```
 2. For each row returned, apply rules:
-   - `risk_class=high` or matches sensitive paths (auth/payment/schema/secret) → MUST dispatch `worker-reviewer` on the task diff.
-   - `risk_class=medium` → MUST dispatch `worker-reviewer` on the task diff.
+   - `risk_class=high` or matches sensitive paths (auth/payment/schema/secret) → MUST dispatch `worker-reviewer` with a focused contract (run `git diff HEAD~1 -- <files_to_touch>` to get the exact diff, and pass it in the contract's `scope`).
+   - `risk_class=medium` → MUST dispatch `worker-reviewer` with a focused contract (run `git diff HEAD~1 -- <files_to_touch>` to get the exact diff, and pass it in the contract's `scope`).
    - `risk_class=low` and no sensitive match → skip.
 3. After running `worker-reviewer`, persist the result transcript as an artifact:
    ```bash

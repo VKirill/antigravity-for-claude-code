@@ -94,9 +94,10 @@ export function killTmuxJobSession(jobId: string): void {
 export function startTmuxJob(
   jobId: string,
   prompt: string,
-  conversationId: string | null
+  conversationId: string | null,
+  customCwd?: string
 ): JobMeta {
-  const projectCwd = getProjectCwd();
+  const projectCwd = customCwd || getProjectCwd();
   const jobDir = getJobDir(jobId);
   const promptFile = join(jobDir, "prompt.txt");
   const outputFile = join(jobDir, "output.txt");
@@ -143,7 +144,7 @@ export function startTmuxJob(
   }
 
   // Create redirect bash command
-  const bashCommand = `${envPrefix}${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
+  const bashCommand = `${envPrefix}cd '${projectCwd}' && ${binPath} ${escapedArgs} < '${promptFile}' > '${outputFile}' 2>&1; echo $? > '${exitCodeFile}'`;
 
   // Start tmux session in background
   try {

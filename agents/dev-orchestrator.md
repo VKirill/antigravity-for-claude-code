@@ -287,8 +287,8 @@ contained `task update <id> --status done`, run this checklist:
    sqlite3 .claude/orchestrator.db "SELECT t.id, t.risk_class, t.contract_yaml FROM tasks t WHERE t.status='done' AND t.completed_at > datetime('now','-30 minutes') AND NOT EXISTS (SELECT 1 FROM task_artifacts a WHERE a.task_id=t.id AND a.kind='worker_review');"
    ```
 2. For each row returned, apply rules:
-   - `risk_class=high` or matches sensitive paths (auth/payment/schema/secret) → MUST dispatch `worker-reviewer` on the task diff.
-   - `risk_class=medium` → MUST dispatch `worker-reviewer` on the task diff.
+   - `risk_class=high` or matches sensitive paths (auth/payment/schema/secret) → MUST dispatch `worker-reviewer` with a focused contract (run `git diff HEAD~1 -- <files_to_touch>` to get the exact diff, and pass it in the contract's `scope`).
+   - `risk_class=medium` → MUST dispatch `worker-reviewer` with a focused contract (run `git diff HEAD~1 -- <files_to_touch>` to get the exact diff, and pass it in the contract's `scope`).
    - `risk_class=low` and no sensitive match → skip.
 3. After running `worker-reviewer`, persist the result transcript as an artifact:
    ```bash

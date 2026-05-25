@@ -68,7 +68,7 @@ export async function handleDiscussWithAntigravityAsyncStart(args: any) {
   const jobId = `${taskPrefix}job-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   // Start job in tmux
-  const meta = startTmuxJob(jobId, promptToSend, conversationIdToUse);
+  const meta = startTmuxJob(jobId, promptToSend, conversationIdToUse, args?.cwd ? String(args.cwd) : undefined);
 
   return {
     content: [
