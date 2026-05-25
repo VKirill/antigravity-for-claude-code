@@ -18,6 +18,8 @@
 // These functions are pure (no fs) so they are exhaustively unit-testable. The handler reads
 // the file + computes the crash marker, then calls formatWorkerResult().
 
+import { parse as parseYaml } from "yaml";
+
 const TAIL_BYTES = 64 * 1024; // the envelope is the last thing agy prints; bound the scan window.
 
 function dedent(s: string): string {
@@ -32,34 +34,59 @@ function dedent(s: string): string {
   return lines.map((l) => l.slice(min)).join("\n");
 }
 
-// A real envelope has a top-level `result:` AND payload under it (a nested key, or an inline
-// value). Rejects a truncated `result:` with nothing after it (a halted/streamed-off block).
-function looksLikeEnvelope(body: string): boolean {
-  const at = body.search(/^result[ \t]*:/m);
-  if (at < 0) return false;
-  const after = body.slice(at);
-  return /^result[ \t]*:[ \t]*\S/.test(after) || /\n[ \t]+\S[^\n]*:/.test(after);
+export type EnvelopeParse = { ok: true; envelope: string } | { ok: false; error: string };
+
+/**
+ * STRICT validation via a real YAML parser. The candidate must actually PARSE and have a
+ * top-level `result:` mapping with content. "Strict" = if the orchestrator couldn't YAML.parse
+ * it, we reject it (no regex guessing). Tolerates a stray ```yaml fence and indentation, then
+ * returns the re-wrapped envelope or a clear, human-readable error.
+ */
+export function parseEnvelopeStrict(candidate: string | null | undefined): EnvelopeParse {
+  if (!candidate || !candidate.trim()) return { ok: false, error: "empty" };
+  let body = candidate.trim();
+  // tolerate a single ```yaml fence wrapping the candidate
+  const fenced = body.match(/^`{3,}[ \t]*(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n`{3,}\s*$/);
+  if (fenced) body = fenced[1];
+  body = dedent(body.trim());
+
+  let doc: unknown;
+  try {
+    doc = parseYaml(body);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message.split("\n")[0] : String(e);
+    return { ok: false, error: `invalid YAML: ${msg}` };
+  }
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return { ok: false, error: "top level is not a YAML mapping" };
+  }
+  const result = (doc as Record<string, unknown>).result;
+  if (result === undefined) return { ok: false, error: "no top-level `result:` key" };
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return { ok: false, error: "`result:` is empty or not a mapping" };
+  }
+  return { ok: true, envelope: "```yaml\n" + body.trimEnd() + "\n```" };
 }
 
 /**
  * Pull the worker's `result:` envelope out of the raw agy transcript.
- * Returns the envelope re-wrapped in a clean ```yaml fence, or null if none is present.
- * Scans only the tail; among candidates the LAST valid one wins (the final answer).
+ * Returns the envelope re-wrapped in a clean ```yaml fence, or null if none parses.
+ * Scans only the tail; among candidates the LAST one that strictly parses wins (the final answer).
  */
 export function extractResultEnvelope(output: string): string | null {
   if (!output) return null;
   const scan = output.length > TAIL_BYTES ? output.slice(-TAIL_BYTES) : output;
 
-  // 1) Fenced code blocks (``` or ```` , optional yaml/yml lang). Take the LAST whose dedented
-  //    body looks like an envelope (top-level result: + payload).
+  // 1) Fenced code blocks (``` or ```` , optional yaml/yml lang). Take the LAST that strictly
+  //    parses as an envelope (real YAML.parse + top-level result: mapping).
   const fenceRe = /(`{3,})[ \t]*(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n\1[ \t]*(?:\r?\n|$)/g;
   let m: RegExpExecArray | null;
-  let lastBody: string | null = null;
+  let last: string | null = null;
   while ((m = fenceRe.exec(scan)) !== null) {
-    const body = dedent(m[2]);
-    if (looksLikeEnvelope(body)) lastBody = body;
+    const p = parseEnvelopeStrict(m[2]);
+    if (p.ok) last = p.envelope;
   }
-  if (lastBody !== null) return "```yaml\n" + lastBody.trimEnd() + "\n```";
+  if (last !== null) return last;
 
   // 2) Loose fallback: a bare top-level `result:` (no fence). From the LAST such line to the end.
   const bareRe = /^result[ \t]*:/gm;
@@ -67,30 +94,23 @@ export function extractResultEnvelope(output: string): string | null {
   let lastIdx = -1;
   while ((bare = bareRe.exec(scan)) !== null) lastIdx = bare.index;
   if (lastIdx >= 0) {
-    const block = scan.slice(lastIdx);
-    if (looksLikeEnvelope(block)) return "```yaml\n" + block.trimEnd() + "\n```";
+    const p = parseEnvelopeStrict(scan.slice(lastIdx));
+    if (p.ok) return p.envelope;
   }
 
   return null;
 }
 
 /**
- * The STRICT path: the worker wrote its envelope to a dedicated `result.yaml` SIDECAR — a clean
- * file, not the noisy transcript. We just normalise + validate it (no mining, no guessing which
- * block is real). Tolerates an accidental ```yaml fence the worker may have added. Returns the
- * wrapped envelope, or null if the sidecar is absent/empty/not a valid envelope — in which case
- * the caller falls back to transcript extraction (older worker, or it crashed before writing).
+ * The STRICT sidecar path: the worker wrote its envelope to a dedicated `result.yaml` SIDECAR —
+ * a clean file, not the noisy transcript. We strictly YAML.parse + validate it (no mining, no
+ * guessing). Returns the wrapped envelope, or null if absent/empty/invalid — in which case the
+ * caller falls back to transcript extraction. (For the invalid-but-present case the caller can use
+ * parseEnvelopeStrict directly to surface the error.)
  */
 export function wrapSidecarEnvelope(content: string | null | undefined): string | null {
-  if (!content) return null;
-  let body = content.trim();
-  if (!body) return null;
-  // tolerate the worker wrapping the file in a single fence
-  const fenced = body.match(/^`{3,}[ \t]*(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n`{3,}\s*$/);
-  if (fenced) body = fenced[1];
-  body = dedent(body.trim());
-  if (!looksLikeEnvelope(body)) return null;
-  return "```yaml\n" + body.trimEnd() + "\n```";
+  const p = parseEnvelopeStrict(content);
+  return p.ok ? p.envelope : null;
 }
 
 /**

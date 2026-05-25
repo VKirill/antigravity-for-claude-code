@@ -4,6 +4,7 @@ import {
   synthesizeFailureEnvelope,
   formatWorkerResult,
   wrapSidecarEnvelope,
+  parseEnvelopeStrict,
 } from "./utils/result-envelope.ts";
 
 describe("extractResultEnvelope", () => {
@@ -188,5 +189,50 @@ describe("wrapSidecarEnvelope (strict result.yaml path)", () => {
     expect(wrapSidecarEnvelope("just some text")).toBeNull();
     expect(wrapSidecarEnvelope("foo:\n  bar: 1")).toBeNull();
     expect(wrapSidecarEnvelope("result:")).toBeNull(); // truncated, no payload
+  });
+});
+
+describe("parseEnvelopeStrict (real YAML.parse)", () => {
+  test("accepts a valid envelope", () => {
+    const p = parseEnvelopeStrict("result:\n  status: done\n  summary: ok");
+    expect(p.ok).toBe(true);
+    if (p.ok) expect(p.envelope).toContain("status: done");
+  });
+
+  test("rejects malformed YAML with a clear error", () => {
+    const p = parseEnvelopeStrict("result:\n  items: [1, 2"); // unclosed flow sequence
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.error).toContain("invalid YAML");
+  });
+
+  test("rejects YAML that has no top-level result: key", () => {
+    const p = parseEnvelopeStrict("foo:\n  bar: 1");
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.error).toContain("result:");
+  });
+
+  test("rejects result: that is empty or a scalar (not a mapping)", () => {
+    expect(parseEnvelopeStrict("result:").ok).toBe(false);          // null
+    expect(parseEnvelopeStrict("result: done").ok).toBe(false);     // scalar
+    const p = parseEnvelopeStrict("result: done");
+    if (!p.ok) expect(p.error).toContain("mapping");
+  });
+
+  test("rejects a top-level scalar (not a mapping)", () => {
+    const p = parseEnvelopeStrict("just a string");
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.error).toContain("mapping");
+  });
+
+  test("rejects empty input", () => {
+    expect(parseEnvelopeStrict("").ok).toBe(false);
+    expect(parseEnvelopeStrict("   ").ok).toBe(false);
+    expect(parseEnvelopeStrict(null).ok).toBe(false);
+  });
+
+  test("tolerates a stray ```yaml fence around the envelope", () => {
+    const p = parseEnvelopeStrict("```yaml\nresult:\n  status: planned\n```");
+    expect(p.ok).toBe(true);
+    if (p.ok) expect((p.envelope.match(/```/g) || []).length).toBe(2);
   });
 });

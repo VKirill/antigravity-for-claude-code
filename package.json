@@ -15,6 +15,7 @@
     "install-hooks": "node install-hooks.cjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.1"
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "yaml": "^2.9.0"
   }
 }

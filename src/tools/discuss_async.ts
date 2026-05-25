@@ -2,7 +2,7 @@ import { sessionState } from "../state.ts";
 import { loadPrompt } from "../utils/prompts.ts";
 import { startTmuxJob, getJobStatus, getJobDir, scanFatalMarker } from "../utils/jobs.ts";
 import { buildFooter } from "../utils/observability.ts";
-import { formatWorkerResult, wrapSidecarEnvelope } from "../utils/result-envelope.ts";
+import { formatWorkerResult, parseEnvelopeStrict } from "../utils/result-envelope.ts";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -190,21 +190,31 @@ export async function handleDiscussWithAntigravityAsyncResult(args: any) { // gu
   if (full) {
     payload = responseText;
   } else {
-    // STRICT path first: read the worker's result.yaml sidecar (a clean dedicated file — no
-    // mining the noisy transcript). Fall back to extracting from the transcript only if the
-    // sidecar is missing/invalid (older worker, or it crashed before writing).
+    // STRICT path first: read the worker's result.yaml sidecar and YAML.parse it (a clean file,
+    // not the noisy transcript). Parses → use it. Present-but-invalid → keep the parser's error
+    // as a diagnostic. Absent → quietly fall back to transcript extraction (older worker / crash).
     let sidecar: string | null = null;
+    let sidecarError: string | null = null;
     try {
       const sidecarPath = join(getJobDir(jobId), "result.yaml");
-      if (existsSync(sidecarPath)) sidecar = wrapSidecarEnvelope(readFileSync(sidecarPath, "utf-8"));
+      if (existsSync(sidecarPath)) {
+        const raw = readFileSync(sidecarPath, "utf-8");
+        if (raw.trim()) {
+          const p = parseEnvelopeStrict(raw);
+          if (p.ok) sidecar = p.envelope;
+          else sidecarError = p.error;
+        }
+      }
     } catch (e) {
-      sidecar = null; // unreadable sidecar → fall through to transcript extraction
+      sidecarError = e instanceof Error ? e.message : String(e);
     }
     if (sidecar) {
       payload = sidecar;
     } else {
       let crashMarker: string | null = null;
       try { crashMarker = scanFatalMarker(outputFile); } catch { crashMarker = null; }
+      // A present-but-malformed sidecar is a clear (non-silent) failure signal — surface it.
+      if (sidecarError && !crashMarker) crashMarker = `result.yaml rejected — ${sidecarError}`;
       payload = formatWorkerResult({ output: responseText, crashMarker });
     }
   }
