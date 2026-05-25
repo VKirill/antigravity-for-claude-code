@@ -1,10 +1,7 @@
-import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, readdirSync, openSync, readSync, closeSync } from "fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, openSync, readSync, closeSync } from "fs";
 import { join } from "path";
 import { execSync, spawn } from "child_process";
-import { homedir } from "os";
 import { logLifecycleEvent, captureGitFiles, buildFooter } from "./observability.ts";
-import { getNewestConversationId } from "./agy.ts";
-import { sessionState } from "../state.ts";
 
 export interface JobMeta {
   jobId: string;
@@ -149,8 +146,8 @@ export function startTmuxJob(
   // Start tmux session in background
   try {
     execSync(`tmux new-session -d -s "${jobId}" -c "${projectCwd}" "${bashCommand}"`, { stdio: "ignore" });
-  } catch (err: any) {
-    const errorMsg = `Failed to start tmux session: ${err.message || String(err)}`;
+  } catch (err) {
+    const errorMsg = `Failed to start tmux session: ${err instanceof Error ? err.message : String(err)}`;
     const failedMeta: JobMeta = {
       jobId,
       conversationId,
@@ -217,14 +214,10 @@ export function getJobStatus(jobId: string): JobMeta {
         // ignore
       }
 
-      // If success, attempt to extract and persist the new conversation ID
-      if (isSuccess) {
-        const newConvId = getNewestConversationId();
-        if (newConvId) {
-          sessionState.activeConversationId = newConvId;
-        }
-      }
-
+      // Conversation identity stays per-job in meta.conversationId. We deliberately do
+      // NOT write a global sessionState.activeConversationId here: under parallel job
+      // completion getNewestConversationId() (newest .pb by mtime) could attribute one
+      // job's conversation to another and leak context across tasks.
       saveJobMeta(meta);
 
       logLifecycleEvent(isSuccess ? "agy.async.success" : "agy.async.failed", {
@@ -233,10 +226,10 @@ export function getJobStatus(jobId: string): JobMeta {
         durationMs: meta.durationMs,
       });
 
-    } catch (e: any) {
+    } catch (e) {
       // Soft fail parsing code, treat as failed
       meta.status = "failed";
-      meta.error = `Error reading exit code: ${e.message}`;
+      meta.error = `Error reading exit code: ${e instanceof Error ? e.message : String(e)}`;
       saveJobMeta(meta);
     }
   } else {
@@ -258,7 +251,47 @@ export function getJobStatus(jobId: string): JobMeta {
   return meta;
 }
 
-// Background log/crash monitor
+// Tail-scan a single file for any configured fatal marker.
+// Returns the matched marker string, or null. Pure + job-scoped by design: the caller
+// passes the job's OWN output file, so one job's crash can never implicate a sibling.
+// (The previous monitor scanned the SHARED newest ~/.gemini/.../cli-*.log and fired the
+//  kill on whichever job the loop happened to be iterating — under parallelism a single
+//  crashed job killed healthy ones. Scanning per-job output.txt removes that coupling.)
+export function scanFatalMarker(filePath: string): string | null {
+  const markers = (process.env.AGY_FATAL_MARKERS ||
+    "trajectory converted to zero chat messages,agent executor error")
+    .split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  if (markers.length === 0) return null;
+
+  try {
+    if (!existsSync(filePath)) return null;
+    const size = statSync(filePath).size;
+    if (size <= 0) return null;
+
+    const tailScanBytes = 32 * 1024;
+    const start = Math.max(0, size - tailScanBytes);
+    const len = size - start;
+    if (len <= 0) return null;
+
+    const buf = Buffer.alloc(len);
+    const fd = openSync(filePath, "r");
+    try {
+      readSync(fd, buf, 0, len, start);
+    } finally {
+      closeSync(fd);
+    }
+    const chunk = buf.toString("utf-8");
+    for (const m of markers) {
+      if (chunk.includes(m)) return m;
+    }
+  } catch (e) {
+    // soft-fail: monitoring must never throw
+  }
+  return null;
+}
+
+// Background crash monitor. Each running job is checked against ITS OWN output stream,
+// so detection is fully isolated per job (safe under parallel dispatch).
 export function startCrashMonitor(): void {
   if (monitorIntervalId) return;
 
@@ -271,57 +304,10 @@ export function startCrashMonitor(): void {
       if (meta.status !== "running") continue;
 
       activeCount++;
-      const jobDir = getJobDir(jobId);
-      const outputFile = join(jobDir, "output.txt");
-
-      try {
-        // Also check newest agy CLI log file for fatal markers
-        const homeDir = process.env.HOME || homedir();
-        const logDir = join(homeDir, ".gemini/antigravity-cli/log");
-        if (existsSync(logDir)) {
-          let newestName: string | null = null;
-          let newestTime = -1;
-          for (const f of readdirSync(logDir)) {
-            if (!f.startsWith("cli-") || !f.endsWith(".log")) continue;
-            const t = statSync(join(logDir, f)).mtimeMs;
-            if (t > newestTime) {
-              newestTime = t;
-              newestName = f;
-            }
-          }
-
-          if (newestName) {
-            const logFile = join(logDir, newestName);
-            const size = statSync(logFile).size;
-
-            // Check fatal markers in tail
-            const tailScanBytes = 32 * 1024;
-            const start = Math.max(0, size - tailScanBytes);
-            const len = size - start;
-            if (len > 0) {
-              const buf = Buffer.alloc(len);
-              const fd = openSync(logFile, "r");
-              try {
-                readSync(fd, buf, 0, len, start);
-              } finally {
-                closeSync(fd);
-              }
-              const chunk = buf.toString("utf-8");
-              const markers = (process.env.AGY_FATAL_MARKERS ||
-                "trajectory converted to zero chat messages,agent executor error")
-                .split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-
-              for (const m of markers) {
-                if (chunk.includes(m)) {
-                  fireEarlyKill(jobId, `Fatal marker in CLI log: "${m}"`);
-                  break;
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // ignore soft-fail
+      const outputFile = join(getJobDir(jobId), "output.txt");
+      const marker = scanFatalMarker(outputFile);
+      if (marker) {
+        fireEarlyKill(jobId, `Fatal marker in job output: "${marker}"`);
       }
     }
 
