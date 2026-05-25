@@ -11,6 +11,7 @@ describe("formatUsageSummary", () => {
       totalPromptChars: 0,
       totalOutputChars: 0,
       totalAgySeconds: 0,
+      totalSuccessAgySeconds: 0,
       estimatedTokens: 0,
     };
 
@@ -22,6 +23,9 @@ describe("formatUsageSummary", () => {
     expect(output).toContain("Jobs Started");
     expect(output).toContain("Total Agy Seconds");
     expect(output).toContain("0s (0.0m)");
+    // Verified: Average successful job duration (s) is present and defaults to 0.0 without NaN/Infinity
+    expect(output).toContain("Average successful job duration (s)");
+    expect(output).toContain("0.0");
   });
 
   test("renders a sample summary with correct labels and formatted numbers", () => {
@@ -33,6 +37,7 @@ describe("formatUsageSummary", () => {
       totalPromptChars: 9876543,
       totalOutputChars: 1234567,
       totalAgySeconds: 90050,
+      totalSuccessAgySeconds: 60050,
       estimatedTokens: 2753051,
     };
 
@@ -46,6 +51,7 @@ describe("formatUsageSummary", () => {
     expect(output).toContain("Total Prompt Chars");
     expect(output).toContain("Total Output Chars");
     expect(output).toContain("Total Agy Seconds");
+    expect(output).toContain("Average successful job duration (s)");
     expect(output).toContain("Estimated Tokens");
 
     // Verify numbers are formatted with thousands separators
@@ -60,10 +66,13 @@ describe("formatUsageSummary", () => {
     expect(output).toContain("90,050s");
     expect(output).toContain("1,500.8m");
 
+    // Verify average successful job duration formatting (60050 / 1200 = 50.0416... -> 50.042)
+    expect(output).toContain("50.042");
+
     // Verify alignment
     const lines = output.split("\n");
     const contentLines = lines.filter(l => l.includes(":"));
-    expect(contentLines.length).toBe(8);
+    expect(contentLines.length).toBe(9);
 
     const colonPositions = contentLines.map(l => l.indexOf(":"));
     const firstColonPos = colonPositions[0];

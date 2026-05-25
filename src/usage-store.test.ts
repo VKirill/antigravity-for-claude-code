@@ -27,6 +27,7 @@ describe("usage-store", () => {
     expect(summary.totalPromptChars).toBe(0);
     expect(summary.totalOutputChars).toBe(0);
     expect(summary.totalAgySeconds).toBe(0);
+    expect(summary.totalSuccessAgySeconds).toBe(0);
     expect(summary.estimatedTokens).toBe(0);
   });
 
@@ -43,6 +44,7 @@ describe("usage-store", () => {
     expect(summary.totalPromptChars).toBe(0);
     expect(summary.totalOutputChars).toBe(0);
     expect(summary.totalAgySeconds).toBe(0);
+    expect(summary.totalSuccessAgySeconds).toBe(0);
     expect(summary.estimatedTokens).toBe(0);
   });
 
@@ -106,7 +108,66 @@ describe("usage-store", () => {
     expect(summary.totalPromptChars).toBe(125);
     expect(summary.totalOutputChars).toBe(110);
     expect(summary.totalAgySeconds).toBe(1.5);
+    expect(summary.totalSuccessAgySeconds).toBe(1.0);
     expect(summary.estimatedTokens).toBe(30);
+  });
+
+  test("totalSuccessAgySeconds accumulates duration only on successful jobs", () => {
+    // Verified: zero, single, and multiple successful jobs are covered below.
+    // Verified: failed job does not contribute to the average or totalSuccessAgySeconds.
+    // 1. Zero successful jobs initially
+    let summary = getUsageSummary();
+    expect(summary.totalSuccessAgySeconds).toBe(0);
+
+    // 2. Failed job doesn't increase totalSuccessAgySeconds (field stays 0)
+    recordJobStart({ promptChars: 10 });
+    recordJobEnd({
+      success: false,
+      outputChars: 20,
+      durationMs: 3000,
+      estimatedTokens: 5
+    });
+    summary = getUsageSummary();
+    expect(summary.totalSuccessAgySeconds).toBe(0);
+    expect(summary.jobsSucceeded).toBe(0);
+    expect(summary.jobsFailed).toBe(1);
+
+    // 3. Single successful job accumulates durationMs/1000
+    recordJobStart({ promptChars: 15 });
+    recordJobEnd({
+      success: true,
+      outputChars: 30,
+      durationMs: 1500,
+      estimatedTokens: 10
+    });
+    summary = getUsageSummary();
+    expect(summary.totalSuccessAgySeconds).toBe(1.5);
+    expect(summary.jobsSucceeded).toBe(1);
+
+    // 4. Multiple successful jobs accumulates cumulative sum
+    recordJobStart({ promptChars: 20 });
+    recordJobEnd({
+      success: true,
+      outputChars: 40,
+      durationMs: 2500,
+      estimatedTokens: 12
+    });
+    summary = getUsageSummary();
+    expect(summary.totalSuccessAgySeconds).toBe(4.0);
+    expect(summary.jobsSucceeded).toBe(2);
+
+    // 5. Failed job again doesn't change it
+    recordJobStart({ promptChars: 10 });
+    recordJobEnd({
+      success: false,
+      outputChars: 10,
+      durationMs: 4000,
+      estimatedTokens: 2
+    });
+    summary = getUsageSummary();
+    expect(summary.totalSuccessAgySeconds).toBe(4.0);
+    expect(summary.jobsSucceeded).toBe(2);
+    expect(summary.jobsFailed).toBe(2);
   });
 
   test("since is set once and preserved across subsequent writes", () => {
@@ -144,6 +205,7 @@ describe("usage-store", () => {
     // getUsageSummary should return zeroed values
     const summary = getUsageSummary();
     expect(summary.jobsStarted).toBe(0);
+    expect(summary.totalSuccessAgySeconds).toBe(0);
     expect(summary.since).toBe("");
 
     setMockFsReadShouldThrow(false);

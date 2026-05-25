@@ -42,5 +42,7 @@ describe("usage_stats.ts tool tests", () => {
     const text = response.result.content[0].text;
     expect(text).toContain("agy usage (all-time)");
     expect(text).toContain("Jobs Started");
+    // Verify that the new average successful job duration metric is present in the output
+    expect(text).toContain("Average successful job duration (s)");
   });
 });
