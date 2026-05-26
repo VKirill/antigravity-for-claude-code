@@ -11,9 +11,8 @@ describe("index.ts entrypoint tests", () => {
     transport = new MockTransport();
     try {
       await server.close();
-    } catch (e) {}
-    // @ts-ignore
-    await server.connect(transport);
+    } catch { /* guardian: allow — server may be unconnected on first run */ }
+    await server.connect(transport as unknown as Parameters<typeof server.connect>[0]);
   });
 
   beforeEach(() => {
@@ -33,22 +32,31 @@ describe("index.ts entrypoint tests", () => {
     await new Promise(resolve => setTimeout(resolve, 20));
 
     expect(transport.sentMessages.length).toBe(1);
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — JSON-RPC response shape in test
     expect(response.id).toBe(50);
     expect(response.result.tools).toBeArray();
-    expect(response.result.tools.length).toBe(12);
+    expect(response.result.tools.length).toBe(15);
 
-    const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity");
+    const discussTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity"); // guardian: allow — matches existing tool-find pattern in this test
     expect(discussTool).toBeDefined();
 
-    const resetTool = response.result.tools.find((t: any) => t.name === "reset_antigravity_session");
+    const consultTool = response.result.tools.find((t: any) => t.name === "consult_antigravity"); // guardian: allow — matches existing tool-find pattern in this test
+    expect(consultTool).toBeDefined();
+
+    const resetTool = response.result.tools.find((t: any) => t.name === "reset_antigravity_session"); // guardian: allow — matches existing tool-find pattern in this test
     expect(resetTool).toBeDefined();
 
-    const usageTool = response.result.tools.find((t: any) => t.name === "get_usage_stats");
+    const usageTool = response.result.tools.find((t: any) => t.name === "get_usage_stats"); // guardian: allow — matches existing tool-find pattern in this test
     expect(usageTool).toBeDefined();
 
     const waitTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity_async_wait"); // guardian: allow — matches existing tool-find pattern in this test
     expect(waitTool).toBeDefined();
+
+    const logTool = response.result.tools.find((t: any) => t.name === "discuss_with_antigravity_async_log"); // guardian: allow — matches existing tool-find pattern in this test
+    expect(logTool).toBeDefined();
+
+    const skillCatalogTool = response.result.tools.find((t: any) => t.name === "get_skill_catalog"); // guardian: allow — matches existing tool-find pattern in this test
+    expect(skillCatalogTool).toBeDefined();
   });
 
   test("Unknown tool call triggers error response", async () => {
@@ -65,7 +73,7 @@ describe("index.ts entrypoint tests", () => {
     await new Promise(resolve => setTimeout(resolve, 20));
 
     expect(transport.sentMessages.length).toBe(1);
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — JSON-RPC response shape in test
     expect(response.id).toBe(51);
     expect(response.error).toBeDefined();
     expect(response.error.message).toContain("Unknown tool: non_existent_tool");

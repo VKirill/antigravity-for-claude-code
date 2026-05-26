@@ -6,12 +6,14 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { handleDiscussWithAntigravity, handleResetAntigravitySession } from "./tools/discuss.ts";
-import { handleDiscussWithAntigravityAsyncStart, handleDiscussWithAntigravityAsyncStatus, handleDiscussWithAntigravityAsyncResult, handleDiscussWithAntigravityAsyncWait } from "./tools/discuss_async.ts";
+import { handleDiscussWithAntigravityAsyncStart, handleDiscussWithAntigravityAsyncStatus, handleDiscussWithAntigravityAsyncResult, handleDiscussWithAntigravityAsyncWait, handleDiscussWithAntigravityAsyncLog } from "./tools/discuss_async.ts";
 import { handleRunDebateDeliberation, handleRunInteractiveDebate } from "./tools/debate.ts";
 import { handleReviewCodeChanges, handleGetProgrammingAdvice } from "./tools/programming.ts";
+import { handleConsultAntigravity } from "./tools/consult.ts";
 import { handleGetDebateReceipt } from "./tools/receipt.ts";
 import { logLifecycleEvent } from "./utils/observability.ts";
 import { handleGetUsageStats } from "./tools/usage_stats.ts";
+import { handleGetSkillCatalog } from "./tools/skill_catalog.ts";
 import { sweepOrphanJobSessions, killSessions } from "./utils/session-gc.ts";
 import { getActiveRunningJobIds, harvestCompletedOrphans } from "./utils/jobs.ts";
 
@@ -170,6 +172,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "discuss_with_antigravity_async_log",
+        description: "read-only tail of a job's transcript, last N lines, safe in any state",
+        inputSchema: {
+          type: "object",
+          properties: {
+            jobId: {
+              type: "string",
+              description: "The job ID returned by discuss_with_antigravity_async_start.",
+            },
+            lines: {
+              type: "number",
+              description: "Number of trailing lines to return (positive integer). Default 50.",
+            },
+          },
+          required: ["jobId"],
+        },
+      },
+      {
         name: "reset_antigravity_session",
         description: "Clears the active discussion session history in memory. The next discussion call will start a fresh, new conversation context. Optionally configures a systemPrompt for the new session in advance.",
         inputSchema: {
@@ -277,6 +297,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "consult_antigravity",
+        description: "Deep CONSULTATION with Antigravity (agy) on ANY topic — a rigorous, evidence-based principal advisor across technical (architecture/code/data/infra), product/UX, AI & prompt-engineering, marketing/SEO/copywriting, strategy/business, and general questions. Returns a structured PROSE analysis and recommendation — never task contracts, never a planning breakdown, never a YAML `result:` envelope. Actively uses live research (perplexity/tavily) for current/uncertain facts and can ground advice in book-distilled methodology skills (pass `skills`). Use for 'assess this', 'how best to do X', 'evaluate by these N points', 'improve this prompt', and non-coding advisory too. For WRITING code use the worker path; for DEBATES use run_debate_deliberation. Supports multi-turn via conversationId and reading a target repo via cwd.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            prompt: {
+              type: "string",
+              description: "The consultation request — what to assess/design/evaluate, optionally broken into points.",
+            },
+            context: {
+              type: "string",
+              description: "Optional extra material (spec, constraints, file excerpts) prepended before the request.",
+            },
+            skills: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional methodology skills to ground the advice in. The consultant reads each SKILL.md (~/.agents/skills/<name>/SKILL.md) before answering — e.g. architecture-craft, data-systems-craft, coder-craft, debugging-craft, senior-marketer-mindset.",
+            },
+            conversationId: {
+              type: "string",
+              description: "Optional ID to continue a previous consultation thread (multi-turn). Echoed back as consult_session_id so you can resume.",
+            },
+            cwd: {
+              type: "string",
+              description: "Optional absolute path of the project the consultant should run in, so it can read that repo's files. Defaults to the server's working directory.",
+            },
+          },
+          required: ["prompt"],
+        },
+      },
+      {
         name: "get_debate_receipt",
         description: "Generates a structured Debate Receipt (Markdown report) containing role claims, evidence, rejected alternatives, touched files, and security hooks audit data for a given debate session ID.",
         inputSchema: {
@@ -294,7 +345,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
-      { name: "get_usage_stats", description: "Returns all-time agy usage stats (jobs started/succeeded/failed and estimated tokens) as a text table.", inputSchema: { type: "object", properties: {} } }
+      { name: "get_usage_stats", description: "Returns all-time agy usage stats (jobs started/succeeded/failed and estimated tokens) as a text table.", inputSchema: { type: "object", properties: {} } },
+      {
+        name: "get_skill_catalog",
+        description: "Lists agy worker skills parsed from prompts/skills-catalog.md. Optional filters: `name` (exact match — wins over category) and `category` (case-insensitive substring against the catalog's bold header, e.g. 'Testing', 'Backend & data'). Returns JSON { skills:[{name,category,description,file_path}], total, warnings }.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name:     { type: "string", description: "Exact skill name (e.g. 'typescript'). When set, category is ignored." },
+            category: { type: "string", description: "Case-insensitive substring against the catalog category header (e.g. 'testing', 'Backend & data')." }
+          }
+        }
+      }
     ],
   };
 });
@@ -343,6 +405,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return handleDiscussWithAntigravityAsyncWait(args);
   }
 
+  if (name === "discuss_with_antigravity_async_log") {
+    return handleDiscussWithAntigravityAsyncLog(args);
+  }
+
   if (name === "reset_antigravity_session") {
     return handleResetAntigravitySession(args);
   }
@@ -363,11 +429,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return handleGetProgrammingAdvice(args);
   }
 
+  if (name === "consult_antigravity") {
+    return handleConsultAntigravity(args);
+  }
+
   if (name === "get_debate_receipt") {
     return handleGetDebateReceipt(args);
   }
 
   if (name === "get_usage_stats") return handleGetUsageStats();
+
+  if (name === "get_skill_catalog") return handleGetSkillCatalog(args);
 
   throw new Error(`Unknown tool: ${name}`);
 });
