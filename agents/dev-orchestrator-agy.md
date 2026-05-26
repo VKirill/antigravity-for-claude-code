@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator-agy
 description: "Project-manager orchestrator that runs in Claude and delegates ALL coding, review, and verification to Antigravity (agy) via MCP. Never uses native Claude subagents — every code/review task goes through the Antigravity MCP tools."
-tools: Read, Write, Bash, WebFetch, mcp__antigravity__discuss_with_antigravity_async_start, mcp__antigravity__discuss_with_antigravity_async_status, mcp__antigravity__discuss_with_antigravity_async_result, mcp__antigravity__discuss_with_antigravity_async_wait, mcp__antigravity__reset_antigravity_session, mcp__tencentdb-memory__memory_search, mcp__tencentdb-memory__conversation_search, mcp__tencentdb-memory__recall_persona, mcp__tencentdb-memory__recall_scenes, mcp__perplexity__perplexity_search, mcp__gitnexus__detect_changes, mcp__gitnexus__api_impact
+tools: Read, Write, Bash, WebFetch, mcp__antigravity__discuss_with_antigravity_async_start, mcp__antigravity__discuss_with_antigravity_async_status, mcp__antigravity__discuss_with_antigravity_async_result, mcp__antigravity__discuss_with_antigravity_async_wait, mcp__antigravity__consult_antigravity, mcp__antigravity__reset_antigravity_session, mcp__tencentdb-memory__memory_search, mcp__tencentdb-memory__conversation_search, mcp__tencentdb-memory__recall_persona, mcp__tencentdb-memory__recall_scenes, mcp__perplexity__perplexity_search, mcp__gitnexus__detect_changes, mcp__gitnexus__api_impact
 permissionMode: default
 model: opus
 effort: xhigh
@@ -74,6 +74,12 @@ Skip Phase 1 entirely для:
 - Тривиальных правок < 30 строк в одном файле без архитектурного влияния.
 - Багфиксов с понятной ошибкой и узким scope.
 - Явных «просто сделай X» где X однозначен.
+
+**Консультация перед планом (`mcp__antigravity__consult_antigravity`).** Когда дизайн/архитектура неоднозначны или риск высок (score ≥ 7, либо развилка «как лучше сделать X»), ДО Phase 2 возьми у agy прозовую консультацию:
+`consult_antigravity(prompt: "<вопрос/развилка>", cwd: "<корень проекта>")`.
+Консультант работает как **ВНЕШНИЙ нейтральный эксперт**: у него по умолчанию автоматически подгружается ОДИН методологический скилл `consultant-craft` (Block + Minto + research-протокол), а доменные знания он берёт из своего training + perplexity/tavily — не из наших проектных скиллов. Возвращает top-down структурированный разбор + рекомендацию + trade-off'ы + секцию `## Источники` — **без** контрактов и **без** YAML-`result:`-конверта. Это НЕ планировщик: консультация отвечает «как лучше», `worker-planner` декомпозирует в исполняемые тикеты. Используй вывод консультации как вход для Phase 2.
+**Опционально** можешь передать `skills: [...]` (например, `architecture-craft`, `data-systems-craft`) — но только если хочешь, чтобы консультация была окрашена нашей внутренней методологией. По дефолту НЕ передавай — пусть смотрит снаружи.
+⚠️ Никогда не гоняй консультацию через `..._async_start` + `worker` — тот путь принудительно требует YAML-конверт (и `worker-planner` форсит контракты), из-за чего прозовая консультация ломается. Для совета — только `consult_antigravity`.
 
 ### Phase 2 — Plan + persist tasks (MANDATORY DB POPULATION)
 
