@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-function resolvePromptsDir(): string {
+export function resolvePromptsDir(): string {
   if (process.env.ANTIGRAVITY_PROMPTS_DIR) return process.env.ANTIGRAVITY_PROMPTS_DIR;
   // walk up from import.meta.dir looking for a directory that contains a "prompts" subdir
   let dir = import.meta.dir;
