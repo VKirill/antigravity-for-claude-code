@@ -40,10 +40,34 @@ case "$TOOL" in
   Bash)
     CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
     [ -z "$CMD" ] && exit 0
-    # A reader command targeting a source-ext file BEFORE any pipe → block.
-    # (grep/cat in a pipe over command output, with no source-file arg, stays allowed,
-    #  e.g. `task list | grep done`. `git diff -- file` stays allowed: that is PM paperwork.)
-    if printf '%s' "$CMD" | grep -qiE "(^|[;&|]| )(cat|sed|awk|head|tail|less|more|bat|view|grep|egrep|fgrep|rg)[[:space:]][^|]*\.($SRC)([^a-zA-Z0-9]|\$)"; then
+    RESULT=$(CMD="$CMD" SRC="$SRC" python3 -c '
+import os, sys, re, shlex
+try:
+    cmd = os.environ.get("CMD", "")
+    toks = shlex.split(cmd, posix=True)
+    ops = {"&&", "||", ";", "|"}
+    segs = [[]]
+    for t in toks:
+        if t in ops:
+            segs.append([])
+        else:
+            segs[-1].append(t)
+    readers = {"cat", "sed", "awk", "head", "tail", "less", "more", "bat", "view", "grep", "egrep", "fgrep", "rg"}
+    src = os.environ.get("SRC", "")
+    src_pattern = re.compile(r"\.(" + src + r")$", re.IGNORECASE)
+    for s in segs:
+        if not s:
+            continue
+        argv0 = s[0]
+        if argv0 in readers and argv0 != "git":
+            for arg in s[1:]:
+                if src_pattern.search(arg):
+                    print("DENY")
+                    sys.exit(1)
+except Exception:
+    sys.exit(0)
+' 2>/dev/null || true)
+    if [ "$RESULT" = "DENY" ]; then
       deny "$REASON  (Tried to read source via Bash: $CMD)"
     fi
     exit 0
