@@ -140,3 +140,100 @@ test("h. agent_type worker-coder running cat on source file is allowed", async (
   expect(exitCode).toBe(0);
   expect(json).toBeNull();
 });
+
+test("i. xargs cat src/foo.ts is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "xargs cat src/foo.ts"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("j. bash -c \"cat src/foo.ts\" is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: `bash -c "cat src/foo.ts"`
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("k. sh -c 'grep TODO src/foo.ts' is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "sh -c 'grep TODO src/foo.ts'"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("l. eval 'cat src/foo.ts' is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "eval 'cat src/foo.ts'"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("m. find . -name '*.ts' -exec cat {} \\; is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "find . -name '*.ts' -exec cat {} \\;"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("n. env FOO=bar cat src/foo.ts is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "env FOO=bar cat src/foo.ts"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("o. xargs -I{} echo {} < list.txt is allowed", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "xargs -I{} echo {} < list.txt"
+    }
+  });
+
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
