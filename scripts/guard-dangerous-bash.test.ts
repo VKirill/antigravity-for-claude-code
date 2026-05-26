@@ -156,3 +156,51 @@ test("t12. unbalanced-quote input psql -c \"oops -> exit 0, allow (fail-open)", 
   expect(exitCode).toBe(0);
   expect(json).toBeNull();
 });
+
+test("t13. a 3-segment command chained with && where the middle segment is echo \"<<EOF\" and outer segments are psql -c with DROP TABLE and DELETE FROM respectively -> exit 2, deny", async () => {
+  const { exitCode, json } = await runHook({
+    tool_input: {
+      command: 'psql -c "DROP TABLE foo" && echo "<<EOF" && psql -c "DELETE FROM bar"'
+    }
+  });
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("t14. real heredoc body - cat <<EOF\\nDROP TABLE x\\nEOF\\n| task insert - -> exit 0, allow", async () => {
+  const { exitCode, json } = await runHook({
+    tool_input: {
+      command: `cat <<EOF
+DROP TABLE x
+EOF
+| task insert -`
+    }
+  });
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+
+test("t15. echo '<<EOF' -> exit 0, allow", async () => {
+  const { exitCode, json } = await runHook({
+    tool_input: {
+      command: "echo '<<EOF'"
+    }
+  });
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+
+test("t16. quoted heredoc delimiter regression case -> exit 2, deny", async () => {
+  const { exitCode, json } = await runHook({
+    tool_input: {
+      command: `cat <<'EOF' | psql -c "DROP TABLE x"
+stuff
+EOF`
+    }
+  });
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+

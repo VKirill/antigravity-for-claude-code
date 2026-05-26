@@ -74,7 +74,7 @@ def strip_heredocs(cmd_str):
         line = lines[i]
         clean_lines.append(line)
         try:
-            tokens = shlex.split(line, posix=True)
+            tokens = shlex.split(line, posix=False)
         except Exception:
             tokens = []
         delims = []
@@ -87,6 +87,7 @@ def strip_heredocs(cmd_str):
                     delim = tokens[j+1]
                     j += 1
                 if delim:
+                    delim = delim.strip("\"'\\\\")
                     delims.append(delim)
             elif tok.startswith("<<"):
                 delim = tok[2:]
@@ -94,6 +95,7 @@ def strip_heredocs(cmd_str):
                     delim = tokens[j+1]
                     j += 1
                 if delim:
+                    delim = delim.strip("\"'\\\\")
                     delims.append(delim)
             j += 1
         for delim in delims:
