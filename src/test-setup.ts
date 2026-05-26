@@ -18,6 +18,7 @@ export let mockFiles: { name: string; mtime: number; size?: number }[] = [];
 export let mockReadContent = "";
 export let lastSpawnArgs: string[] = [];
 export let lastSpawnStdin = "";
+export let lastSpawnCwd = "";
 export let mockReaddirShouldThrow = false;
 export let mockAuditLogContent = "";
 export let mockExistsSyncResult = false;
@@ -73,6 +74,7 @@ export function resetMockState() {
   mockReadContent = "";
   lastSpawnArgs = [];
   lastSpawnStdin = "";
+  lastSpawnCwd = "";
   mockReaddirShouldThrow = false;
   mockAuditLogContent = "";
   mockExistsSyncResult = false;
@@ -98,6 +100,7 @@ mock.module("child_process", () => {
   return {
     spawn: (cmd: string, args: string[], options: unknown) => {
       lastSpawnArgs = args;
+      lastSpawnCwd = (options as { cwd?: string } | null | undefined)?.cwd || "";
       const listeners: Record<string, Function[]> = {};
       const stdoutListeners: Function[] = [];
       const stderrListeners: Function[] = [];

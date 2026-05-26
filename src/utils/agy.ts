@@ -12,8 +12,11 @@ interface AgyError extends Error {
   fatalCrash?: boolean;
 }
 
-// Helper to run agy CLI command, passing prompt via stdin and inheriting environment
-export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<string> {
+// Helper to run agy CLI command, passing prompt via stdin and inheriting environment.
+// `cwd` (optional) overrides the working directory agy runs in — needed by tools like the
+// consultant that must read a TARGET project's files. When omitted, behavior is unchanged
+// (process.env.PWD || process.cwd()), so every existing caller is byte-for-byte identical.
+export function runAgy(args: string[], prompt: string, maxRetries = 2, cwd?: string): Promise<string> {
   let attempts = 0;
 
   logLifecycleEvent("dispatch", {
@@ -24,7 +27,7 @@ export function runAgy(args: string[], prompt: string, maxRetries = 2): Promise<
   const execute = (): Promise<string> => {
     return new Promise((resolve, reject) => {
       const homeDir = process.env.HOME || homedir();
-      const projectCwd = process.env.PWD || process.cwd();
+      const projectCwd = cwd || process.env.PWD || process.cwd();
       const timeoutMs = Number(process.env.AGY_TIMEOUT_MS) || 1200000;
       const fallbackMs = process.env.AGY_EXIT_FALLBACK_MS
         ? Number(process.env.AGY_EXIT_FALLBACK_MS)

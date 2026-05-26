@@ -506,3 +506,17 @@ function fireEarlyKill(jobId: string, reason: string): void {
     durationMs: meta.durationMs,
   });
 }
+
+export function tailLogLines(jobId: string, n: number): string[] {
+  const path = join(getJobDir(jobId), "output.txt");
+  if (!existsSync(path)) {
+    return [];
+  }
+  const content = readFileSync(path, "utf-8");
+  const lines = content.split(/\r?\n/);
+  if (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  return lines.slice(-n);
+}
+
