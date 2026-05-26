@@ -1,6 +1,6 @@
 import { sessionState } from "../state.ts";
 import { loadPrompt } from "../utils/prompts.ts";
-import { startTmuxJob, getJobStatus, getJobDir, scanFatalMarker } from "../utils/jobs.ts";
+import { startTmuxJob, getJobStatus, getJobDir, scanFatalMarker, loadJobMeta, tailLogLines } from "../utils/jobs.ts";
 import { buildFooter } from "../utils/observability.ts";
 import { formatWorkerResult, parseEnvelopeStrict } from "../utils/result-envelope.ts";
 import { existsSync, readFileSync } from "fs";
@@ -308,3 +308,31 @@ export async function handleDiscussWithAntigravityAsyncWait(args: any) { // guar
     isError: false,
   };
 }
+
+export async function handleDiscussWithAntigravityAsyncLog(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
+  const jobId = String(args?.jobId || "");
+  if (!jobId) {
+    return { content: [{ type: "text", text: "Error: jobId is required" }], isError: true };
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(jobId)) {
+    return { content: [{ type: "text", text: "Error: invalid jobId" }], isError: true };
+  }
+
+  const linesRaw = args?.lines;
+  const n = linesRaw === undefined ? 50 : Number(linesRaw);
+  if (!Number.isInteger(n) || n <= 0) {
+    return { content: [{ type: "text", text: "Error: lines must be a positive integer" }], isError: true };
+  }
+
+  const meta = loadJobMeta(jobId);
+  if (!meta) {
+    return { content: [{ type: "text", text: `Error: Job not found: ${jobId}` }], isError: true };
+  }
+
+  const out = tailLogLines(jobId, n);
+  return {
+    content: [{ type: "text", text: JSON.stringify({ jobId, lines: out }) }],
+    isError: false,
+  };
+}
+
