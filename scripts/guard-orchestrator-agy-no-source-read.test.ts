@@ -237,3 +237,31 @@ test("o. xargs -I{} echo {} < list.txt is allowed", async () => {
   expect(exitCode).toBe(0);
   expect(json).toBeNull();
 });
+
+test("p. find . -type f -exec cat {} \\; -print is denied", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "find . -type f -exec cat {} \\; -print src/foo.ts"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
+test("q. find . -type d is allowed", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "find . -type d"
+    }
+  });
+
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+

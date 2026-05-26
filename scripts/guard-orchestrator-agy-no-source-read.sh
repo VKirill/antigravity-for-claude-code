@@ -48,12 +48,14 @@ try:
     ops = {"&&", "||", ";", "|"}
     segs = [[]]
     for t in toks:
-        if t in ops:
+        if t == ";" and segs[-1] and segs[-1][0] == "find":
+            segs[-1].append(t)
+        elif t in ops:
             segs.append([])
         else:
             segs[-1].append(t)
     readers = {"cat", "sed", "awk", "head", "tail", "less", "more", "bat", "view", "grep", "egrep", "fgrep", "rg"}
-    WRAPPERS = {"bash","sh","zsh","ksh","xargs","eval","env","sudo","exec","find"}
+    wrappers = {"bash","sh","zsh","ksh","xargs","eval","env","sudo","exec","find"}
     src = os.environ.get("SRC", "")
     src_pattern = re.compile(r"\.(" + src + r")$", re.IGNORECASE)
     for s in segs:
@@ -65,10 +67,11 @@ try:
                 if src_pattern.search(arg):
                     print("DENY")
                     sys.exit(1)
-        elif argv0 in WRAPPERS:
+        elif argv0 in wrappers:
             for arg in s[1:]:
                 if src_pattern.search(arg):
-                    print("DENY"); sys.exit(1)
+                    print("DENY")
+                    sys.exit(1)
 except Exception:
     sys.exit(0)
 ' 2>/dev/null || true)
