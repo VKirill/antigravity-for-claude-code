@@ -123,12 +123,22 @@ answers: [...]               # OPTIONAL — present on re-dispatch after a `need
 
 10. **Insert contracts into the DB.** This is what's new vs the old "return contracts in envelope" model.
 
+    **ID + title convention (so progress boards read like `<id> — <title>`):**
+    - `id` = `<feature_slug>-<NN>` — machine-friendly, sortable, namespaced. Keep it stable.
+    - `title` = a **short human-readable phrase**, imperative, ≤70 chars, describing the
+      OUTCOME (not the mechanism). It's what the user sees in `task list` and the progress
+      board, so make it read naturally:
+      - Good: "Re-enable 10 disabled upload tests", "Fix session guard asymmetry in support proxy"
+      - Bad:  "TASK for upload.test.ts", "edit cabinet code", "misc fixes"
+    - Match the user's working language for the title where natural (the orchestrator may
+      re-render it for the ru progress board, but a clear English title is fine too).
+
     For each contract, in dependency order (deps first):
 
     ```bash
     cat <<'EOF' | task insert -
     id: <feature_slug>-<NN>
-    title: ...
+    title: <short human-readable outcome, imperative, ≤70 chars>
     scope: |
       ...
     acceptance_criteria: [...]

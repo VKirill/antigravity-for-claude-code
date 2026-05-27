@@ -56,8 +56,10 @@ Keys above only; `artifacts`/`errors` always arrays. The orchestrator runs the r
 don't self-review.
 
 ## 4. Size guard
-Same caps as worker-coder (TS/TSX/Vue soft 250 / hard 350). `wc -l` BEFORE editing existing files; at/over
-soft → decompose; over hard → `status: needs_decomposition` with split proposal. Never copy legacy style.
+Same caps as worker-coder: production TS/TSX/Vue **soft 400 / hard 600**; test files (`*.test.*`,
+`*.spec.*`) **soft 600 / hard 900**. `wc -l` BEFORE editing existing files. Soft = judgment call
+(proceed if file is cohesive + your addition is small/on-topic; note "approaching cap"; otherwise
+decompose). Hard = STOP → `status: needs_decomposition` with a split proposal. Never copy legacy style.
 
 ## 5. What you must NOT do
 - ❌ Hardcode secrets — API keys, tokens, passwords, private keys (use env vars / config).

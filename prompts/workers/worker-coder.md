@@ -177,21 +177,33 @@ into your context and overflows the model window (413 → crash). If you must te
    OUTSIDE `files_to_touch` → STOP, `status: paused`, `errors: ["blast-radius outside
    scope: <N> callers in <files>. Awaiting orchestrator."]`. Do not silently widen scope.
 
-6. **Pre-edit size guard** — `wc -l <path>` BEFORE editing an existing file:
+6. **Pre-edit size guard** — `wc -l <path>` BEFORE editing an existing file. These caps are
+   tuned to flag genuine monoliths, NOT moderately-sized files — line count is a cheap proxy
+   for "doing too many things", so treat soft as a *prompt to consider* splitting, hard as a
+   *stop*. **Test files get their own, looser caps** — table-driven tests legitimately grow
+   with coverage, and splitting them by arbitrary line count hurts readability more than it
+   helps.
 
-   | Stack | Soft cap | Hard cap |
+   | File kind | Soft cap | Hard cap |
    |---|---|---|
-   | TS / TSX / Vue | 250 | 350 |
-   | Python | 300 | 450 |
-   | Go / Rust | 350 | 500 |
-   | SQL migrations | 150 | 250 |
-   | YAML / JSON | 100 | 200 |
+   | TS / TSX / Vue (production) | 400 | 600 |
+   | Python (production) | 450 | 700 |
+   | Go / Rust (production) | 500 | 800 |
+   | **Test files** (`*.test.*`, `*.spec.*`, `*_test.*`, `test_*.py`) | 600 | 900 |
+   | SQL migrations | 200 | 350 |
+   | YAML / JSON / locale | 300 | 600 |
+   | Markdown | 800 | 1500 |
 
-   `L_before ≥ soft` → STOP, `status: needs_decomposition`, propose which chunks belong in
-   which new files in `errors`. The orchestrator dispatches `worker-refactor-architect`.
-   `L_before ≥ hard` → same, mark `severity: hard_cap_exceeded`.
+   `L_before ≥ soft` → **judgment call**: if the file is already cohesive and your addition is
+   small + on-topic, proceed and note `notes: "approaching soft cap"` in the result. If the
+   file is sprawling OR your addition is a distinct concern, return `status: needs_decomposition`
+   with a concrete split proposal in `errors`. Don't reflexively split a healthy file just
+   because it crossed soft.
+   `L_before ≥ hard` → **STOP**, `status: needs_decomposition`, `severity: hard_cap_exceeded`.
+   No judgment — a file past hard is a monolith; propose the split, let the orchestrator
+   dispatch `worker-refactor-architect`.
 
-   Apply coder-craft when the file is below cap.
+   Apply coder-craft (deep modules, extract function) when shaping where new code lands.
 
 7. **Implement.** Smallest reversible step. Tidy first OR feature OR refactor — never two in
    one step (Beck). If editing untested risky code — write a characterization test FIRST,
