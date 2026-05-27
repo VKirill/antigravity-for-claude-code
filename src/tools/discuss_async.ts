@@ -358,6 +358,13 @@ export async function handleDiscussWithAntigravityAsyncWait(args: any) { // guar
   };
 }
 
+// Hard ceiling on `_log` response size. Prevents an accidental
+// `lines: 99999` from dumping a 50k-line transcript into the orchestrator's
+// conversation history (irreversible context bloat). Both caps fire — we
+// truncate whichever hits first, and signal via a `truncated` field.
+const ASYNC_LOG_MAX_LINES = 800;
+const ASYNC_LOG_MAX_BYTES = 50 * 1024;
+
 export async function handleDiscussWithAntigravityAsyncLog(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
   const jobId = String(args?.jobId || "");
   if (!jobId) {
@@ -368,8 +375,8 @@ export async function handleDiscussWithAntigravityAsyncLog(args: any) { // guard
   }
 
   const linesRaw = args?.lines;
-  const n = linesRaw === undefined ? 50 : Number(linesRaw);
-  if (!Number.isInteger(n) || n <= 0) {
+  const requested = linesRaw === undefined ? 50 : Number(linesRaw);
+  if (!Number.isInteger(requested) || requested <= 0) {
     return { content: [{ type: "text", text: "Error: lines must be a positive integer" }], isError: true };
   }
 
@@ -378,9 +385,39 @@ export async function handleDiscussWithAntigravityAsyncLog(args: any) { // guard
     return { content: [{ type: "text", text: `Error: Job not found: ${jobId}` }], isError: true };
   }
 
-  const out = tailLogLines(jobId, n);
+  // Clamp requested lines to the line ceiling, then post-clamp by total byte
+  // size so a chatty transcript with short lines can't sneak past either guard.
+  const effectiveLines = Math.min(requested, ASYNC_LOG_MAX_LINES);
+  const linesTruncatedByCount = requested > ASYNC_LOG_MAX_LINES;
+
+  let out = tailLogLines(jobId, effectiveLines);
+  let linesTruncatedBySize = false;
+  let totalBytes = 0;
+  let kept = 0;
+  // Walk from the end (newest lines are the most useful in a tail) and stop
+  // when accumulated byte size would exceed the ceiling.
+  for (let i = out.length - 1; i >= 0; i--) {
+    totalBytes += Buffer.byteLength(out[i], "utf-8") + 1; // +1 for newline
+    if (totalBytes > ASYNC_LOG_MAX_BYTES) {
+      out = out.slice(i + 1);
+      linesTruncatedBySize = true;
+      break;
+    }
+    kept++;
+  }
+  void kept;
+
   return {
-    content: [{ type: "text", text: JSON.stringify({ jobId, lines: out }) }],
+    content: [{
+      type: "text",
+      text: JSON.stringify({
+        jobId,
+        lines: out,
+        truncated: linesTruncatedByCount || linesTruncatedBySize,
+        cap_lines: ASYNC_LOG_MAX_LINES,
+        cap_bytes: ASYNC_LOG_MAX_BYTES,
+      }),
+    }],
     isError: false,
   };
 }

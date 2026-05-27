@@ -43,324 +43,185 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "discuss_with_antigravity",
-        description: "Engage in a multi-turn deliberative debate or discussion session with Antigravity (agy). The server automatically remembers the active conversation history unless reset. You can pass systemPrompt or worker/skills parameters to configure the persona/worker instructions when starting a new discussion thread or executing worker tasks.",
+        description: "Synchronous chat with agy. Server remembers the active session unless reset_antigravity_session is called. systemPrompt or worker+skills configure persona at session start.",
         inputSchema: {
           type: "object",
           properties: {
-            prompt: {
-              type: "string",
-              description: "The prompt/message/question to send to Antigravity.",
-            },
-            conversationId: {
-              type: "string",
-              description: "Optional conversation ID to force-switch or resume a specific historical debate thread.",
-            },
-            systemPrompt: {
-              type: "string",
-              description: "Optional custom system instructions to initialize the conversation with (only applied when starting a new session).",
-            },
-            worker: {
-              type: "string",
-              description: "Optional worker instruction file under prompts/workers/ (e.g. 'worker-coder'). Its {{skills}} placeholder is filled from `skills`. When set, the full instruction is prepended.",
-            },
-            skills: {
-              type: "array",
-              items: {
-                type: "string",
-              },
-              description: "Skills the worker must load (read each SKILL.md), injected into the worker instruction's {{skills}} placeholder.",
-            },
+            prompt:         { type: "string", description: "Message to send." },
+            conversationId: { type: "string", description: "Force-switch / resume a specific session id." },
+            systemPrompt:   { type: "string", description: "Custom system instructions (applied only at session start)." },
+            worker:         { type: "string", description: "Worker role file under prompts/workers/ (e.g. 'worker-coder'). Prepended; {{skills}} filled from `skills`." },
+            skills:         { type: "array", items: { type: "string" }, description: "Skill names injected into the worker's {{skills}} placeholder." },
           },
           required: ["prompt"],
         },
       },
       {
         name: "discuss_with_antigravity_async_start",
-        description: "Starts an asynchronous worker (agy CLI in background tmux). Returns jobId immediately. PREFERRED dispatch is by-reference: pass `task_id` (+ `cwd` + `worker`) so the contract is read from <cwd>/.claude/orchestrator.db by the server and the worker self-fetches via `task export` — keeps your conversation history ~30 tokens/dispatch instead of 5-7k. Use `prompt:` only for ad-hoc dispatches outside the DB protocol. Logs live in .claude/jobs/<jobId>.",
+        description: "Start an async worker (agy CLI in tmux). Returns jobId immediately. PREFER task_id (+cwd+worker) — server reads the contract from <cwd>/.claude/orchestrator.db, worker self-fetches via `task export`. Keeps the orchestrator history ~30 tokens/dispatch instead of 5-7k. `prompt:` is the legacy ad-hoc path.",
         inputSchema: {
           type: "object",
           properties: {
-            task_id: {
-              type: "string",
-              description: "PREFERRED. Task id whose contract is stored in <cwd>/.claude/orchestrator.db. When set, MCP reads the row itself; `prompt:` is ignored. Requires `cwd`.",
-            },
-            prompt: {
-              type: "string",
-              description: "Inline prompt body (LEGACY). Used only when task_id is absent. Bloats conversation history — prefer task_id.",
-            },
-            conversationId: {
-              type: "string",
-              description: "Optional conversation ID to resume a specific historical thread.",
-            },
-            systemPrompt: {
-              type: "string",
-              description: "Optional custom system instructions (only when starting new session).",
-            },
-            worker: {
-              type: "string",
-              description: "Worker role manual under prompts/workers/ (e.g. 'worker-coder', 'worker-frontend'). Prepended to the dispatch prompt.",
-            },
-            skills: {
-              type: "array",
-              items: {
-                type: "string",
-              },
-              description: "Task-specific skills (stack/domain). Injected into the worker manual's {{skills}} placeholder. Do NOT repeat role defaults.",
-            },
-            cwd: {
-              type: "string",
-              description: "Absolute project root. Required when task_id is passed; the server resolves <cwd>/.claude/orchestrator.db.",
-            },
+            task_id:        { type: "string", description: "PREFERRED. Id of a task already inserted in <cwd>/.claude/orchestrator.db. Requires cwd. When set, prompt is ignored." },
+            prompt:         { type: "string", description: "LEGACY inline body. Use only when task_id is absent." },
+            conversationId: { type: "string", description: "Resume a specific historical session." },
+            systemPrompt:   { type: "string", description: "Custom system instructions (only at session start)." },
+            worker:         { type: "string", description: "Worker role file under prompts/workers/. Prepended to the dispatch prompt." },
+            skills:         { type: "array", items: { type: "string" }, description: "Task-specific skills (stack/domain). Don't repeat role defaults." },
+            cwd:            { type: "string", description: "Absolute project root. Required with task_id (server resolves <cwd>/.claude/orchestrator.db)." },
           },
-          // task_id OR prompt — at least one must be present (handler enforces).
+          // task_id OR prompt — at least one (handler enforces).
           required: [],
         },
       },
       {
         name: "discuss_with_antigravity_async_status",
-        description: "Non-blocking peek at ONE job's state (running, success, failed, killed) + a 1-line progress summary. Does NOT return the log tail by default (it accumulates context and invalidates the prompt cache on every poll). To AWAIT jobs prefer discuss_with_antigravity_async_wait (blocking, batch). Pass includeLogTail:true only for debugging.",
+        description: "Peek one job: status (running|success|failed|killed) + 1-line progressSummary. NO logs by default. For batch awaits use discuss_with_antigravity_async_wait.",
         inputSchema: {
           type: "object",
           properties: {
-            jobId: {
-              type: "string",
-              description: "The unique job ID returned by discuss_with_antigravity_async_start.",
-            },
-            includeLogTail: {
-              type: "boolean",
-              description: "When true, also include the last 25 lines of the raw transcript. Default false — debugging only; it bloats context.",
-            },
+            jobId:          { type: "string", description: "Job id from async_start." },
+            includeLogTail: { type: "boolean", description: "Append last 25 transcript lines. Default false — debug only." },
           },
           required: ["jobId"],
         },
       },
       {
         name: "discuss_with_antigravity_async_result",
-        description: "Retrieves the worker's result envelope (the single `result:` YAML block) of a completed background task. The full raw transcript is NOT returned by default — it stays as a server-side artifact so the orchestrator never has to ingest it. Pass full:true only for human debugging or recovery escalation. Call this only when status is no longer running.",
+        description: "Worker's `result:` envelope (parsed from sidecar). Raw transcript stays server-side. Call only when status != running.",
         inputSchema: {
           type: "object",
           properties: {
-            jobId: {
-              type: "string",
-              description: "The unique job ID of the completed task.",
-            },
-            full: {
-              type: "boolean",
-              description: "When true, return the COMPLETE raw transcript instead of just the result envelope. Default false. Use sparingly (debugging / recovery) — it is large and drains context.",
-            },
+            jobId: { type: "string", description: "Job id of a settled task." },
+            full:  { type: "boolean", description: "Return the FULL raw transcript instead of just the envelope. Default false. Debug / recovery only — large." },
           },
           required: ["jobId"],
         },
       },
       {
         name: "discuss_with_antigravity_async_wait",
-        description: "BLOCKING, batch-aware wait — the token-efficient way to await background jobs. Holds the response until the wait condition is met or timeoutMs elapses, so you don't poll in a loop. Returns ONLY compact statuses (no logs): {jobs, finished[], running[], timedOut}. Harvest each finished job with discuss_with_antigravity_async_result; if `running` is non-empty, call this again with those ids.",
+        description: "BLOCKING batch wait — the token-efficient way to await jobs. Holds the JSON-RPC response until the wait condition fires or timeoutMs elapses. Returns {jobs, finished[], running[], timedOut} — statuses only, no logs. Harvest finished via async_result; re-call with `running` if non-empty.",
         inputSchema: {
           type: "object",
           properties: {
-            jobIds: {
-              type: "array",
-              items: { type: "string" },
-              description: "Job IDs to await — pass the whole in-flight batch.",
-            },
-            waitMode: {
-              type: "string",
-              enum: ["any", "all"],
-              description: "'any' (default) returns as soon as ONE job settles — best for fan-in (harvest the first finisher, re-call on the rest). 'all' waits until every job settles.",
-            },
-            timeoutMs: {
-              type: "number",
-              description: "Max block before returning current state (default 180000, min 1000, max 300000). On timeout just call again to keep waiting.",
-            },
+            jobIds:    { type: "array", items: { type: "string" }, description: "In-flight batch to await." },
+            waitMode:  { type: "string", enum: ["any", "all"], description: "'any' (default) → return on first settle (fan-in); 'all' → wait for every job." },
+            timeoutMs: { type: "number", description: "Max block ms (default 180000, range 1000..300000). On timeout just re-call." },
           },
           required: ["jobIds"],
         },
       },
       {
         name: "discuss_with_antigravity_async_log",
-        description: "read-only tail of a job's transcript, last N lines, safe in any state",
+        description: "Read-only tail of a job's transcript. Capped server-side (max 800 lines / 50 KB returned regardless of `lines`).",
         inputSchema: {
           type: "object",
           properties: {
-            jobId: {
-              type: "string",
-              description: "The job ID returned by discuss_with_antigravity_async_start.",
-            },
-            lines: {
-              type: "number",
-              description: "Number of trailing lines to return (positive integer). Default 50.",
-            },
+            jobId: { type: "string", description: "Job id from async_start." },
+            lines: { type: "number", description: "Trailing lines requested (positive int). Default 50. Server caps at 800." },
           },
           required: ["jobId"],
         },
       },
       {
         name: "reset_antigravity_session",
-        description: "Clears the active discussion session history in memory. The next discussion call will start a fresh, new conversation context. Optionally configures a systemPrompt for the new session in advance.",
+        description: "Clear in-memory session. Next discuss starts fresh. Optional systemPrompt configures the new session.",
         inputSchema: {
           type: "object",
           properties: {
-            systemPrompt: {
-              type: "string",
-              description: "Optional custom system instructions to initialize the new session with.",
-            },
+            systemPrompt: { type: "string", description: "System instructions for the new session." },
           },
         },
       },
       {
         name: "run_debate_deliberation",
-        description: "Runs a multi-turn autonomous debate between specialized AI personas (Optimist, Skeptic, Devil's Advocate) to review and refine a solution, ending with a synthesized architectural proposal (ADR).",
+        description: "Multi-turn autonomous debate between AI personas (Optimist, Skeptic, Devil's Advocate). Synthesizes a final ADR.",
         inputSchema: {
           type: "object",
           properties: {
-            topic: {
-              type: "string",
-              description: "The architectural, code, or design topic to debate.",
-            },
-            rounds: {
-              type: "number",
-              description: "Number of debate rounds (turns) to run. Clamped between 3 and 10. Default: 5.",
-            },
-            language: {
-              type: "string",
-              description: "The language for the debate. Supported: 'ru', 'en'. Default: 'ru'.",
-              enum: ["ru", "en"],
-            },
+            topic:    { type: "string", description: "Architectural/code/design topic." },
+            rounds:   { type: "number", description: "Rounds (clamped 3..10, default 5)." },
+            language: { type: "string", enum: ["ru", "en"], description: "Debate language. Default 'ru'." },
           },
           required: ["topic"],
         },
       },
       {
         name: "run_interactive_debate",
-        description: "Runs an interactive multi-turn debate session where the user acts as a Judge/Architect, guiding the AI personas (Optimist, Skeptic, Agreer, Hater) with comments, culminating in a structured ADR.",
+        description: "Interactive debate where the user judges between Optimist/Skeptic/Agreer/Hater personas, culminating in an ADR.",
         inputSchema: {
           type: "object",
           properties: {
-            topic: {
-              type: "string",
-              description: "The topic of the debate. Required only when starting a new debate session.",
-            },
-            userComment: {
-              type: "string",
-              description: "The comment or feedback from the user (Judge/Architect) to guide the debate.",
-            },
-            debateId: {
-              type: "string",
-              description: "The ID of the active debate session to continue. If not specified, uses the last active session in memory.",
-            },
-            action: {
-              type: "string",
-              description: "Action to perform: 'next' (continue the debate with a new round) or 'finalize' (conclude the debate and synthesize the final ADR). Default is 'next'.",
-              enum: ["next", "finalize"],
-            },
-            language: {
-              type: "string",
-              description: "The language for the debate. Supported: 'ru', 'en'. Defaults to auto-detection based on the topic/comment.",
-              enum: ["ru", "en"],
-            },
+            topic:       { type: "string", description: "Topic. Required only when starting a new session." },
+            userComment: { type: "string", description: "Judge's comment/feedback for the next round." },
+            debateId:    { type: "string", description: "Session id to continue. Defaults to last active." },
+            action:      { type: "string", enum: ["next", "finalize"], description: "'next' continues, 'finalize' synthesizes the ADR. Default 'next'." },
+            language:    { type: "string", enum: ["ru", "en"], description: "Debate language. Auto-detected if omitted." },
           },
         },
       },
       {
         name: "review_code_changes",
-        description: "Analyzes a git diff or code snippet for logic errors, code quality, security vulnerabilities, and adherence to clean code principles (SOLID, DRY, KISS). Runs in a single non-continuous session.",
+        description: "One-shot code review of a diff/snippet: logic, quality, security, clean-code adherence (SOLID/DRY/KISS).",
         inputSchema: {
           type: "object",
           properties: {
-            diff: {
-              type: "string",
-              description: "The git diff or code snippet to review.",
-            },
-            context: {
-              type: "string",
-              description: "Optional additional context about the changes or specific project requirements.",
-            },
+            diff:    { type: "string", description: "git diff or code snippet to review." },
+            context: { type: "string", description: "Additional project context / constraints." },
           },
           required: ["diff"],
         },
       },
       {
         name: "get_programming_advice",
-        description: "Provides fast, focused, single-turn expert programming or architectural advice for a specific problem or code snippet. Runs in a single non-continuous session.",
+        description: "Fast single-turn expert programming/architecture advice.",
         inputSchema: {
           type: "object",
           properties: {
-            question: {
-              type: "string",
-              description: "The programming or design question to ask.",
-            },
-            codeSnippet: {
-              type: "string",
-              description: "Optional block of code related to the question.",
-            },
-            language: {
-              type: "string",
-              description: "Optional programming language or technology stack (e.g., typescript, python, postgres).",
-            },
+            question:    { type: "string", description: "The programming or design question." },
+            codeSnippet: { type: "string", description: "Related code, if any." },
+            language:    { type: "string", description: "Language / stack (e.g. typescript, python, postgres)." },
           },
           required: ["question"],
         },
       },
       {
         name: "consult_antigravity",
-        description: "Deep CONSULTATION with Antigravity (agy) on ANY topic — a rigorous, evidence-based principal advisor across technical (architecture/code/data/infra), product/UX, AI & prompt-engineering, marketing/SEO/copywriting, strategy/business, and general questions. Returns a structured PROSE analysis and recommendation — never task contracts, never a planning breakdown, never a YAML `result:` envelope. Actively uses live research (perplexity/tavily) for current/uncertain facts and can ground advice in book-distilled methodology skills (pass `skills`). Use for 'assess this', 'how best to do X', 'evaluate by these N points', 'improve this prompt', and non-coding advisory too. For WRITING code use the worker path; for DEBATES use run_debate_deliberation. Supports multi-turn via conversationId and reading a target repo via cwd.",
+        description: "Deep consultation with agy as principal advisor — architecture/product/AI/marketing/strategy. Returns structured PROSE analysis + recommendation, NOT YAML contracts. Uses live perplexity/tavily research for current facts; methodology skills (pass `skills`) ground the framing. For code USE the worker path; for debates use run_debate_deliberation.",
         inputSchema: {
           type: "object",
           properties: {
-            prompt: {
-              type: "string",
-              description: "The consultation request — what to assess/design/evaluate, optionally broken into points.",
-            },
-            context: {
-              type: "string",
-              description: "Optional extra material (spec, constraints, file excerpts) prepended before the request.",
-            },
-            skills: {
-              type: "array",
-              items: { type: "string" },
-              description: "Optional methodology skills to ground the advice in. The consultant reads each SKILL.md (~/.agents/skills/<name>/SKILL.md) before answering — e.g. architecture-craft, data-systems-craft, coder-craft, debugging-craft, senior-marketer-mindset.",
-            },
-            conversationId: {
-              type: "string",
-              description: "Optional ID to continue a previous consultation thread (multi-turn). Echoed back as consult_session_id so you can resume.",
-            },
-            cwd: {
-              type: "string",
-              description: "Optional absolute path of the project the consultant should run in, so it can read that repo's files. Defaults to the server's working directory.",
-            },
+            prompt:         { type: "string", description: "What to assess/design/evaluate, optionally broken into points." },
+            context:        { type: "string", description: "Extra material (spec, constraints, excerpts) prepended before the request." },
+            skills:         { type: "array", items: { type: "string" }, description: "Methodology skills to ground in (architecture-craft, coder-craft, consultant-craft, etc.). Consultant reads each SKILL.md." },
+            conversationId: { type: "string", description: "Resume a prior consult thread (multi-turn). Echoed back as consult_session_id." },
+            cwd:            { type: "string", description: "Absolute path of the project to read. Defaults to server cwd." },
           },
           required: ["prompt"],
         },
       },
       {
         name: "get_debate_receipt",
-        description: "Generates a structured Debate Receipt (Markdown report) containing role claims, evidence, rejected alternatives, touched files, and security hooks audit data for a given debate session ID.",
+        description: "Markdown receipt for a debate: role claims, evidence, rejected alternatives, touched files, security audit data.",
         inputSchema: {
           type: "object",
           properties: {
-            debateId: {
-              type: "string",
-              description: "The unique ID of the debate session to generate a receipt for. If not provided, uses the last active session in memory.",
-            },
-            language: {
-              type: "string",
-              description: "The language for the receipt. Supported: 'ru', 'en'. Default: 'ru'.",
-              enum: ["ru", "en"],
-            },
+            debateId: { type: "string", description: "Debate session id. Defaults to last active." },
+            language: { type: "string", enum: ["ru", "en"], description: "Receipt language. Default 'ru'." },
           },
         },
       },
-      { name: "get_usage_stats", description: "Returns all-time agy usage stats (jobs started/succeeded/failed and estimated tokens) as a text table.", inputSchema: { type: "object", properties: {} } },
+      { name: "get_usage_stats", description: "All-time agy usage stats (jobs started/succeeded/failed, est. tokens) as a text table.", inputSchema: { type: "object", properties: {} } },
       {
         name: "get_skill_catalog",
-        description: "Lists agy worker skills parsed from prompts/skills-catalog.md. Optional filters: `name` (exact match — wins over category) and `category` (case-insensitive substring against the catalog's bold header, e.g. 'Testing', 'Backend & data'). Returns JSON { skills:[{name,category,description,file_path}], total, warnings }.",
+        description: "List agy worker skills from prompts/skills-catalog.md. Optional filters: `name` (exact, wins) or `category` (case-insensitive substring of the bold header). Returns JSON {skills, total, warnings}.",
         inputSchema: {
           type: "object",
           properties: {
-            name:     { type: "string", description: "Exact skill name (e.g. 'typescript'). When set, category is ignored." },
-            category: { type: "string", description: "Case-insensitive substring against the catalog category header (e.g. 'testing', 'Backend & data')." }
-          }
-        }
+            name:     { type: "string", description: "Exact skill name (e.g. 'typescript'). Beats category." },
+            category: { type: "string", description: "Case-insensitive substring of the catalog category header (e.g. 'testing', 'Backend & data')." },
+          },
+        },
       }
     ],
   };
