@@ -44,6 +44,14 @@ case "$TOOL" in
 import os, sys, re, shlex
 try:
     cmd = os.environ.get("CMD", "")
+    # Newline acts as a statement separator in bash, but shlex.split treats it as
+    # plain whitespace and would bleed the next statements args into the previous
+    # ones argv list (e.g. `git status | head -15\ngit add foo.ts` parses as
+    # `head -15 git add foo.ts`, falsely flagging `head` as reading source).
+    # Normalise to `;` before splitting. Safe because newlines inside double
+    # quotes / $() are preserved by shlex as part of a single quoted token, so
+    # heredocs embedded in `git commit -m "$(cat <<EOF ... EOF)"` are unaffected.
+    cmd = cmd.replace("\n", " ; ")
     toks = shlex.split(cmd, posix=True)
     ops = {"&&", "||", ";", "|"}
     segs = [[]]

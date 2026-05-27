@@ -3,7 +3,7 @@ import { join } from "path";
 
 const hookPath = join(import.meta.dir, "guard-orchestrator-agy-no-source-read.sh");
 
-async function runHook(payload: any) {
+async function runHook(payload: any) { // guardian: allow — test helper accepts arbitrary hook payload shapes
   const proc = Bun.spawn([hookPath], {
     stdin: "pipe",
     stdout: "pipe",
@@ -16,7 +16,7 @@ async function runHook(payload: any) {
   const stdoutText = await new Response(proc.stdout).text();
   const stderrText = await new Response(proc.stderr).text();
 
-  let json: any = null;
+  let json: any = null; // guardian: allow — parsed hook output, shape varies by deny vs allow
   if (stdoutText.trim()) {
     try {
       json = JSON.parse(stdoutText);
@@ -263,5 +263,54 @@ test("q. find . -type d is allowed", async () => {
 
   expect(exitCode).toBe(0);
   expect(json).toBeNull();
+});
+
+// r-t: regression — multi-line bash where newline acts as ';' between statements.
+// Previously the shlex-based segmenter did NOT split on '\n', collapsing the next
+// statement's args into the previous one's argv list. That made `git status | head`
+// followed by `git add file.ts` look like `head ... file.ts` and falsely deny.
+
+test("r. multi-line git pipeline + git add of .ts files is allowed (newline acts as ;)", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: `git status --short 2>&1 | head -15
+echo "---"
+git add packages/application/src/identity/use-cases/cache-user-avatar.ts packages/application/src/identity/use-cases/index.ts`
+    }
+  });
+
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+
+test("s. multi-line `head -15` then `git add file.ts` does not bleed across newline", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: `cat package.json | head -15
+git add src/foo.ts`
+    }
+  });
+
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+
+test("t. real source-read on a separate line is STILL denied (no over-permissive newline rule)", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: `git status
+cat src/foo.ts`
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
 });
 
