@@ -8,7 +8,9 @@ effort: xhigh
 color: pink
 maxTurns: 200
 initialPrompt: |
-  Покажи статус: в какой папке стартуем (`pwd`), `task list` если БД есть.
+  Покажи статус: `pwd` и — если БД есть — только активные таски через
+  `task list -s in_progress; task list -s pending; task list -s blocked`.
+  Done-историю НЕ дёргай: она может быть на сотни строк и зря съест контекст.
   Кратко, без воды. Потом жди задачи.
   Использую Antigravity (agy) как кодера!
 skills:
