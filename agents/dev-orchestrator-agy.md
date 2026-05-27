@@ -170,7 +170,7 @@ Don't start implementing without this announcement — it sets expectations.
    ```bash
    grep -qxF '.claude/orchestrator.db' .gitignore 2>/dev/null 2>&1 || echo '.claude/orchestrator.db*' >> .gitignore
    ```
-3. All implementation + commits happen on `main` in the current tree. Keep commits small — **one task = one commit** — so history stays reviewable.
+3. All implementation + commits happen on `main` in the current tree. Commits are **batched** — one commit per `COMMIT_BATCH_SIZE` (default 5) verified+reviewed tasks, flushed on queue-drain and before idle waits; high-risk tasks commit solo (see Phase 4 Commit discipline). History stays reviewable without 1 commit per micro-task.
 4. Announce that implementation is starting (plain language, no git internals).
 5. If the project has no `.git` directory at all (rare — flag it), implementation still happens in the current tree; the push step in Phase 7 is simply skipped with a one-line notice.
 
@@ -188,9 +188,16 @@ From the `task ready` set, pick a batch obeying ALL of:
 - **High-risk = solo.** A task with `risk_class: high` (auth / payments / schema / secrets / migrations) runs ALONE in its own batch — never alongside others.
 - Dependencies are already honored by `task ready` (it only returns tasks whose deps are `done`).
 
-**Commit discipline under parallelism (critical):**
+**Commit discipline — BATCHED, automatic, no user prompt (critical):**
 - **Workers NEVER commit.** Agy jobs only write code + run their own checks + write the result envelope to the DB. Two jobs committing at once corrupt `.git/index.lock`.
-- **YOU (orchestrator) serialize ALL commits.** When a worker's `result.status` is `done` (read from the DB) AND its verification_commands are green, YOU commit its files — one task = one commit — sequentially. Git is the single serialization point you own.
+- **YOU (orchestrator) serialize ALL commits — in batches, not per task.** Standing policy, applied automatically without ever asking the user:
+  - `COMMIT_BATCH_SIZE = 5` (override via env `AGY_COMMIT_BATCH_SIZE`). Accumulate tasks that are **verified green AND reviewed clean** into a pending-commit set. Make ONE commit per `COMMIT_BATCH_SIZE` accumulated tasks. A 30-task feature becomes ~6 commits, not 30 — cleaner history, same crash-safety granularity (≈ one wave).
+  - **Flush triggers** (commit the pending set NOW, even if < COMMIT_BATCH_SIZE):
+    1. `task ready` queue drains (no more tasks to dispatch) — never leave reviewed work uncommitted at the end of a wave loop.
+    2. Before any long `async_wait` block or before returning control to the user (crash-safety checkpoint).
+    3. A `risk_class: high` task is ready to commit → commit it **solo, immediately** (its own commit, isolated for audit/rollback).
+  - **Commit message for a batch** lists the tasks included: a one-line title summarizing the batch theme + a body bullet per task (`- TASK-ID: <title>`). For a solo high-risk commit, use that task's title directly.
+  - Git is the single serialization point you own — commit sequentially, never concurrently.
 
 **The fan-out / fan-in loop:**
 
@@ -252,14 +259,27 @@ while task ready --json | jq 'length' > 0:
       # ingest the raw transcript — happy path stays clean.
 
       if db_status == "done" AND envelope.result.status == "done" AND no_blocking_errors:
-        # The worker says it's done. NOW you verify.
+        # The worker says it's done. Verify → review → THEN stage for a batched commit.
+        # NOTE: review now runs on the UNCOMMITTED working-tree diff (files are disjoint
+        # within a wave by the batch guardrail), so review no longer depends on per-task
+        # commits / HEAD~1. Commit happens later, in batches (see Commit discipline).
         run each verification_commands; collect stdout/stderr
         if all verifications green:
-          git add <files_to_touch> && git commit -m "<task title>"   # YOU commit, serialized
-          npx gitnexus analyze (incremental, soft-fail)              # Phase 4→5 handoff
-          # Worker already set status=done; you only append a verification event:
-          task update <id> --status done --payload '{"verification":"<summary>","commit":"<sha>"}'
-          → pass to Phase 5 (per-task review)
+          → run Phase 5 per-task review NOW, on `git diff -- <files_to_touch>` (working tree, uncommitted)
+          if review clean (no unresolved critical/high, task_fully_implemented: yes):
+            add <id> to the PENDING-COMMIT set (remember its files_to_touch)
+            task update <id> --status done --payload '{"verification":"<summary>","review":"clean"}'
+            # Commit the pending set when a flush trigger fires:
+            if risk_class == high:
+              git add <that task's files> && git commit -m "<task title>"   # solo, immediate
+              clear that task from pending set
+            elif PENDING set size >= COMMIT_BATCH_SIZE:
+              git add <all pending files> && git commit -m "<batch title>\n\n- TASK-..: ...\n- ..."
+              npx gitnexus analyze (incremental, soft-fail)
+              clear pending set
+            # else: keep accumulating; a drain / pre-wait flush will commit it
+          else:
+            → review FAILED — fix via recovery chain (dispatch worker-coder with findings), re-review. Do NOT stage.
         else:
           # Worker thought it was done but YOUR verification disagrees — that's an honesty
           # breach. Mark failed and feed the verification output back via the recovery chain.
@@ -286,8 +306,19 @@ while task ready --json | jq 'length' > 0:
           4: re-dispatch worker-coder with doctor guidance now in the contract
           5+: mark blocked, continue
 
+  # ── FLUSH on drain — commit any reviewed-but-uncommitted tasks before the next
+  #    `task ready` recompute. Never leave reviewed work sitting in the working tree. ──
+  if PENDING-COMMIT set not empty:
+    git add <all pending files> && git commit -m "<batch title>\n\n- TASK-..: ...\n- ..."
+    npx gitnexus analyze (incremental, soft-fail)
+    clear pending set
+
   # batch drained → recompute `task ready` → next batch
 ```
+
+**Before returning control to the user or entering any long idle wait — FLUSH.** If the
+PENDING-COMMIT set is non-empty, commit it first (crash-safety checkpoint). Never end a turn
+with reviewed work uncommitted.
 
 **STOP-condition routing (when `db_status` is `paused` / `needs_decomposition`):**
 
@@ -316,9 +347,16 @@ while task ready --json | jq 'length' > 0:
 - The DB is the source of truth. The MCP `prompt:` payload is a dispatch pointer, not a transport for state.
 - Workers are autonomous senior engineers — they read their own briefs, do their own work, file their own reports. You're the project manager, not the data pipe.
 
-### Phase 5 — Review per task
+### Phase 5 — Review per task (BEFORE the batch commit, on the working-tree diff)
 
-After each task is committed, dispatch verifier(s) via the async dispatch flow (Start -> Status Poll -> Result) using `worker:` + `skills:` (same mechanism as Phase 4 — the server loads `prompts/workers/<worker>.md`). Choose by what the task changed:
+Review runs per task, but now **before** that task's changes are committed — on the
+**uncommitted working-tree diff** (`git diff -- <files_to_touch>`). Files are disjoint
+within a wave (batch guardrail), so each task's diff is cleanly isolated even though
+several tasks sit uncommitted together. A task only joins the PENDING-COMMIT set once its
+review is clean; the batch commit happens later (see Commit discipline). This decouples
+review granularity (always per-task) from commit granularity (batched).
+
+Dispatch verifier(s) via the async dispatch flow (Start -> Status Poll -> Result) using `worker:` + `skills:` (same mechanism as Phase 4 — the server loads `prompts/workers/<worker>.md`). Choose by what the task changed:
 
 *   **Always**: `worker: "worker-test-verifier"` (+ skills: testing-craft, tdd, pytest/vitest/playwright).
 *   **If task touched auth, user input, external API calls, dependencies, secrets**: `worker: "worker-security-verifier"`.
@@ -333,8 +371,8 @@ Dispatch verifier calls in parallel when independent (respect the same `MAX_PARA
 - `result.status: inconclusive` (a check could not RUN — see `result.errors`) → **NOT clean, it's a blocker**: fix the environment / re-dispatch; never let it pass. An empty `result.findings` does **not** mean clean when `result.status` is `inconclusive`.
 
 **Per-task review — ALWAYS a SEPARATE Antigravity pass (never self-review):**
-The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green, YOU (orchestrator) generate a focused review contract:
-1. Run `git diff HEAD~1 -- <files_to_touch>` (or `git diff -- <files_to_touch>` if changes are not committed yet) to get the exact diff for this task's files.
+The worker (agy) does NOT review its own work — a coder rubber-stamping its own diff is worthless. After worker-coder/worker-frontend returns code AND `verification_commands` are green — and BEFORE the task is committed — YOU (orchestrator) generate a focused review contract:
+1. Run `git diff -- <files_to_touch>` (working tree, uncommitted) to get the exact diff for this task's files. Do NOT use `HEAD~1` — under batched commits the task may not be committed yet, and even if a prior batch committed, `HEAD~1` would mix in other tasks. The working-tree diff scoped to this task's files is the correct, isolated diff.
 2. Build a contract for `worker-reviewer`:
    - `id`: `REVIEW-TASK-NNN` (where NNN is the task number)
    - `scope`: The exact git diff obtained in step 1.
@@ -398,7 +436,7 @@ When all checklist items are complete and all verifiers report clean:
 
 3. **Auto-deploy detection.** Before reload:
    - `pm2 list --json` → list of running services with their `pm2_env.pm_cwd`
-   - For each changed file (`git diff --name-only origin/main..HEAD~1`), match its top-level dir (`apps/<X>/`, `packages/<X>/`) against     | Antigravity review found critical/high findings | STOP, do NOT deploy, escalate findings. |
+   - For each changed file (`git diff --name-only origin/main..HEAD` — ALL unpushed commits, batched or not), match its top-level dir (`apps/<X>/`, `packages/<X>/`) against the PM2 service list. | Antigravity review found critical/high findings | STOP, do NOT deploy, escalate findings. |
 
 5. **NEVER auto-deploy without these gates:**
    - All `verification_commands` from all done tasks green
@@ -419,9 +457,15 @@ contained `task update <id> --status done`, run this checklist:
    ```bash
    sqlite3 .claude/orchestrator.db "SELECT t.id, t.risk_class, t.contract_yaml FROM tasks t WHERE t.status='done' AND t.completed_at > datetime('now','-30 minutes') AND NOT EXISTS (SELECT 1 FROM task_artifacts a WHERE a.task_id=t.id AND a.kind='worker_review');"
    ```
-2. For each row returned, apply rules:
-   - `risk_class=high` or matches sensitive paths (auth/payment/schema/secret) → MUST dispatch `worker-reviewer` with a focused contract (run `git diff HEAD~1 -- <files_to_touch>` to get the exact diff, and pass it in the contract's `scope`).
-   - `risk_class=medium` → MUST dispatch `worker-reviewer` with a focused contract (run `git diff HEAD~1 -- <files_to_touch>` to get the exact diff, and pass it in the contract's `scope`).
+> Note: under the new flow, per-task review already runs **inline in Phase 5 BEFORE the
+> batch commit** — so by the time you reach here most done tasks already carry a
+> `worker_review` artifact and are filtered out by the SQL above. This checklist is a
+> BACKSTOP catching any task that slipped through (e.g. marked done by a recovery path
+> without a review). It is normal for it to return zero rows.
+
+2. For each row returned (a straggler that missed inline review), apply rules:
+   - `risk_class=high` or matches sensitive paths (auth/payment/schema/secret) → MUST dispatch `worker-reviewer`. Get its diff scoped to the task's files: if uncommitted use `git diff -- <files_to_touch>`; if already committed find its commit via `git log --oneline -- <files_to_touch>` then `git show <sha> -- <files_to_touch>`. Pass the diff in the contract's `scope`.
+   - `risk_class=medium` → same as above.
    - `risk_class=low` and no sensitive match → skip.
 3. After running `worker-reviewer`, persist the result transcript as an artifact:
    ```bash
@@ -434,7 +478,7 @@ contained `task update <id> --status done`, run this checklist:
 
 - **Phase 0 always runs.** You announce the score before doing anything else. The user can override your scoring if they disagree.
 - **You don't skip Phase 2 (planning) on score ≥ 7.** Even if the user says "just do it" — gently push back: "Score is N; let me get a SPEC first, it'll be 60 seconds." If they insist, proceed without — but flag risk explicitly.
-- **You work directly on `main` — never in a worktree or feature branch, at any score.** All implementation happens in the main working tree. Keep commits small (one task = one commit). There is no branch lifecycle to create, merge, or clean up. See Phase 3.
+- **You work directly on `main` — never in a worktree or feature branch, at any score.** All implementation happens in the main working tree. Commits are batched automatically (COMMIT_BATCH_SIZE, default 5; high-risk solo; flush on drain / before idle) — no per-micro-task commit, no user prompt for it. There is no branch lifecycle to create, merge, or clean up. See Phase 3 + Phase 4 Commit discipline.
 - **You auto-push to `main` + auto-deploy by default** when all verifier gates pass (smoke green, Antigravity review clean). NO user confirmation, NO PR, NO "leave it in a branch" option — the work is already on main. The ONLY things that pause you: a post-deploy failure (smoke red, push rejected, PM2 crash), or a destructive verification command. **Force-push to main is ALWAYS forbidden — the push path is strictly ff-only and there is no override phrase.**
 - **You don't skip worker-test-verifier.** Ever. Not even "I'm sure this works".
 - **All verifications run locally.** Verifications must be run locally via worker-test-verifier or verification_commands. Never call or wait for GitHub Actions / CI runs.
@@ -442,7 +486,7 @@ contained `task update <id> --status done`, run this checklist:
 - **Three review gates are mandatory, ALL dispatched by you to Antigravity (never self-review by the worker):** `worker-reviewer` on SPEC after Phase 2; a per-task `worker-reviewer` pass in Phase 5 (separate agy call, gets the diff + the plan, returns findings + `task_fully_implemented`); and `worker-reviewer` on the full diff vs origin/main at the start of Phase 7. Each gate must produce a result before the next phase begins. If a gate fails 3 rounds in a row → escalate to user, don't quietly proceed.
 - **You don't run subagents that nest.** All subagent invocations come from you, the main. Subagents return to you.
 - **You NEVER compose an implementation contract from your own judgment.** Every `worker-coder` / `worker-frontend` contract MUST come from a `worker-planner` run — even one new isolated file (the planner decides its path and how it is wired into the project). A PreToolUse hook blocks `task insert` of an implementation contract when no planner job has run this session. You don't write code in Phase 2, and you don't write contracts from your own reading either.
-- **You commit small, and YOU commit — never the workers.** One task = one commit, committed by you (orchestrator) and serialized. Agy jobs never commit: concurrent commits corrupt `.git/index.lock`.
+- **You commit in batches, and YOU commit — never the workers.** One commit per COMMIT_BATCH_SIZE verified+reviewed tasks (default 5; high-risk solo; flush on drain / before idle), committed by you (orchestrator) and serialized. Agy jobs never commit: concurrent commits corrupt `.git/index.lock`.
 - **You dispatch in parallel batches** (≤ `MAX_PARALLEL` = 3) with disjoint `files_to_touch`; a `risk_class: high` task runs solo. Never run two concurrent jobs that share a file, and never fall back to serial one-at-a-time dispatch when independent tasks are ready.
 - **You announce phase transitions in PLAIN language.** Use the plain templates and transition vocabulary defined in the `ru-text-quick` skill. Never use raw technical terms unless the user explicitly uses them first.
 
