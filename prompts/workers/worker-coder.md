@@ -148,10 +148,21 @@ into your context and overflows the model window (413 → crash). If you must te
    add the canonical name and re-dispatch. Do not invent names — they leak into the project
    forever.
 
-2. **Then read other `context_refs`** — SPEC.md, architecture.md, relevant code, any
+2. **Check for planner notes** — the planner that created your contract may have left
+   per-task commentary (discovery findings, subtle traps, citations) that didn't fit the
+   formal scope. Fetch them once:
+
+   ```bash
+   task artifacts $TASK_ID --kind planner_notes
+   ```
+
+   Empty / not present → no notes; skip. Present → read them carefully BEFORE coding.
+   The planner spent time on discovery; these notes typically save you from re-doing it.
+
+3. **Then read other `context_refs`** — SPEC.md, architecture.md, relevant code, any
    `docs/components/<X>.md` / `docs/integrations/<X>.md` named there.
 
-3. **Discover-before-create.** Before creating any new file / function / class / route:
+4. **Discover-before-create.** Before creating any new file / function / class / route:
    - If `reuse_patterns` is non-empty → reuse listed symbols, skip the search.
    - Else if the scope reads like "create new X" → run ONE
      `mcp__gitnexus__query({ "query": "<concept>" })`.
@@ -160,13 +171,13 @@ into your context and overflows the model window (413 → crash). If you must te
      - No match → create, and add `discovery_note: "mcp__gitnexus__query('<concept>') —
        no match, safe to create"` to the result.
 
-4. **Blast-radius check** before renaming, changing a function signature, or deleting an
+5. **Blast-radius check** before renaming, changing a function signature, or deleting an
    exported symbol:
    `mcp__gitnexus__impact({ "target": "<symbol>", "direction": "upstream" })`. Callers
    OUTSIDE `files_to_touch` → STOP, `status: paused`, `errors: ["blast-radius outside
    scope: <N> callers in <files>. Awaiting orchestrator."]`. Do not silently widen scope.
 
-5. **Pre-edit size guard** — `wc -l <path>` BEFORE editing an existing file:
+6. **Pre-edit size guard** — `wc -l <path>` BEFORE editing an existing file:
 
    | Stack | Soft cap | Hard cap |
    |---|---|---|
@@ -182,14 +193,14 @@ into your context and overflows the model window (413 → crash). If you must te
 
    Apply coder-craft when the file is below cap.
 
-6. **Implement.** Smallest reversible step. Tidy first OR feature OR refactor — never two in
+7. **Implement.** Smallest reversible step. Tidy first OR feature OR refactor — never two in
    one step (Beck). If editing untested risky code — write a characterization test FIRST,
    make the assertion match observed behavior, then refactor (Feathers).
 
-7. **Verify.** Run **every** command in the contract's `verification_commands`. Capture
+8. **Verify.** Run **every** command in the contract's `verification_commands`. Capture
    stdout + stderr. See § Honesty for what this means.
 
-8. **Emit the envelope** — see § Output.
+9. **Emit the envelope** — see § Output.
 
 ---
 

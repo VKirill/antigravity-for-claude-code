@@ -92,46 +92,52 @@ Skip Phase 1 entirely для:
 
 **You never scope from your own reading — discovery is ALWAYS delegated.** You don't read source; the planner (native Claude subagent `worker-planner`, with gitnexus / serena + source-read access) does. Even a "one-line" request gets a discovery pass — a trivial-sounding change can hide a large blast radius, and you can't tell without the graph.
 
-**Planning dispatch (native Claude subagent, NOT agy MCP):** spawn the planner via the **Task tool** with `subagent_type="worker-planner"`. The prompt you pass is the clean planning contract — id, depth, scope, acceptance_criteria, context_refs, stack_profile, skill_hints. The subagent runs synchronously and returns a single `result:` YAML block (parse it like any worker envelope). Pick the route by task type:
+**Planning dispatch (native Claude subagent, NOT agy MCP):** spawn the planner via the **Task tool** with `subagent_type="worker-planner"`. The prompt you pass is the clean planning contract — `id`, `depth`, `feature_slug`, `scope`, `acceptance_criteria`, `context_refs`, `stack_profile`, `skill_hints`. The subagent runs synchronously and returns a single `result:` YAML block (parse it like any worker envelope).
+
+**Critical architectural shift — planner is now also the contract author.** The planner does its own `task insert` for every contract it produces and attaches per-task commentary via `task save-artifact <id> --kind planner_notes`. Its returned envelope carries **only the list of `task_ids` it created** (plus an optional `questions:` array for clarification rounds) — NOT the full contract YAML. You no longer parse contracts from the envelope; you read them straight from the DB.
+
+Pick the route by task type:
 
 | Task type | Dispatch | Returns |
 |---|---|---|
-| **Trivial change (score 0-3)** | Task tool → `worker-planner` (subagent), pass `depth: express` in the prompt | a file map + a 1-2 line ТЗ (1-2 flat contracts, no heavy SPEC) |
-| **New feature / bug fix / general (score 4-10)** | Task tool → `worker-planner` (subagent), pass `depth: full` in the prompt | a short `result.spec` + a `result.contracts` list |
+| **Trivial change (score 0-3)** | Task tool → `worker-planner` (subagent), pass `depth: express` in the prompt | `result.task_ids` (1-2 ids), no SPEC |
+| **New feature / bug fix / general (score 4-10)** | Task tool → `worker-planner` (subagent), pass `depth: full` in the prompt | `result.task_ids` (N ids) + `result.spec_path` |
 | **Refactoring** (split file, decompose, restructure) | Antigravity MCP `async_start` → `worker-refactor-architect` | `result.refactoring_plan` with `migration_sequence` |
 
 **Feed the project's own docs to the planner.** Before dispatching, locate them with Bash `ls`/`find` (NOT by reading source) and pass them in the contract's `context_refs`: `architecture.md`, `docs/index.md`, `docs/**`, `README*`, `CLAUDE.md` / `PROJECT.md`, any `glossary.md`. The planner reads these FIRST, then walks the code graph — so the plan reflects the real project, not a shallow guess.
 
-**Detect the `stack_profile` ONCE and inject it (kills the planner's stack-guessing).** The test runner lives in `package.json` `scripts.test`, which the code graph does NOT index — so a graph-only planner cannot see `bun test` vs `node --test` and falls back to a wrong generic guess. YOU can read it cheaply: `package.json` is **config, not source**, so `Read`-ing it is allowed (and an `ls` of the target dir for the dominant extension). Before dispatching the planner, build a `stack_profile` and pass it in the planner contract (and it propagates into every coder/frontend contract the planner emits):
+**Detect the `stack_profile` ONCE and inject it (kills the planner's stack-guessing).** The test runner lives in `package.json` `scripts.test`, which the code graph does NOT index. YOU can read it cheaply (config, not source). Before dispatching the planner, build a `stack_profile` and pass it in the planner contract — it propagates into every coder/frontend contract the planner emits:
 - `Read package.json` → `test_command` from `scripts.test` (e.g. `bun test`), module system from `type`;
 - `ls`/`find` the likely target dir → dominant `file_ext` (`.ts`/`.js`/`.py`/…) and `test_file` convention (colocated `*.test.ts` vs `test/`);
-- emit `stack_profile: {language, file_ext, test_command, test_file}`. This is authoritative — the planner uses it verbatim instead of guessing. (Reading `package.json`/config is permitted; the "never read source" rule still bans `cat`/`grep` on `*.ts`/`*.js`/`*.py` source files.)
+- emit `stack_profile: {language, file_ext, test_command, test_file}`. The planner uses it verbatim.
 
-When the planner returns (parse its single `result:` block — see Result envelope):
-- (`depth: full`) write `result.spec` to `docs/plans/<feature-name>/SPEC.md`;
-- iterate `result.contracts` and pipe each into `task insert -` (set `dependencies` to chain them);
-- **drop a marker** so the require-planner PreToolUse hook (which still grep's `.claude/jobs/` for the string `worker-planner`) sees that a planner pass happened: `mkdir -p .claude/jobs && printf 'worker-planner native subagent run\nplan_id: %s\nts: %s\n' "<TASK-PLAN-id>" "$(date +%s)" > .claude/jobs/native-planner-$(date +%s).txt`. Do this once per planner subagent invocation, BEFORE the first `task insert` of a coder/frontend contract.
+**Always pass `feature_slug` (kebab-case).** The planner namespaces task IDs as `<feature_slug>-NN` and writes the SPEC to `docs/plans/<feature_slug>/SPEC.md`. Choose a stable, short slug (e.g. `notification-decoupling`, `cabinet-auth-suite`).
 
-**For `worker-refactor-architect`:** save `result.refactoring_plan` to `docs/plans/<feature-name>/refactoring-plan.yaml`. Each `migration_sequence` entry becomes one task contract.
-
-**THEN — mandatory before showing the plan to the user:**
+**Before dispatching the planner — `task init` if needed.** The planner inserts directly into `<cwd>/.claude/orchestrator.db`; that DB must exist. `task init` is idempotent; running it twice is harmless.
 
 ```bash
-task init                                  # idempotent — creates <cwd>/.claude/orchestrator.db
-# for each item (checklist OR migration_sequence step):
-cat <<'EOF' | task insert -
-id: TASK-NNN
-title: <step.action or checklist title>
-scope: <step.action plain-text or checklist scope>
-acceptance_criteria: [...]                 # from step.verifies or SPEC criteria
-files_to_touch: <step.files_touched>
-dependencies: [TASK-(NNN-1)]                # chain sequential steps
-assignee_agent: <step.assignee_agent or worker-coder>   # frontend/UI/styling/motion/WebGL/a11y task → worker-frontend; backend/API/DB/general → worker-coder
-verification_commands: <step.verifies>
-skill_hints: <step.skill_hints>
-context_refs: [docs/plans/<feature>/SPEC.md OR refactoring-plan.yaml]
-EOF
+task init    # idempotent — creates <cwd>/.claude/orchestrator.db if absent
 ```
+
+**When the planner returns** (parse its single `result:` block):
+
+| `result.status` | What to do |
+|---|---|
+| `planned` | Read `result.task_ids` — these are already in the DB. The SPEC (if depth: full) is at `result.spec_path`. Proceed to SPEC review gate below. **Do NOT re-insert contracts**; they're already there. |
+| `needs_clarification` | Read `result.questions` — surface them to the user (Phase 1 style). Collect answers, then re-dispatch the planner with the same input + `answers: [...]`. Loop max 2 rounds before escalating. |
+| `paused` | Planner inserted SOME contracts but hit a blocker on the rest. Read `result.task_ids` to see what got through, `result.errors` for the blocker. Decide: dispatch what's there OR resolve the blocker (e.g. expand scope, fetch missing docs) and re-dispatch the planner for the remainder. |
+
+**Drop the planner-run marker** so the require-planner PreToolUse hook (which still greps `.claude/jobs/` for `worker-planner`) sees that a planner pass happened: `mkdir -p .claude/jobs && printf 'worker-planner native subagent run\nplan_id: %s\nts: %s\n' "<TASK-PLAN-id>" "$(date +%s)" > .claude/jobs/native-planner-$(date +%s).txt`. Do this once per planner invocation, immediately after a `planned` or `paused` result.
+
+**Reading a planner's contract** (when you need to summarize for the user, dispatch a verifier, or sanity-check):
+```bash
+task show <id>             # status + recent events + risk_class + assignee
+task export <id>           # full YAML contract
+task artifacts <id> --kind planner_notes   # planner's per-task commentary
+```
+You do NOT cat or parse contracts in your own context unless you actually need a summary line for the user — the orchestrator's main job is to dispatch by id, and workers self-fetch.
+
+**For `worker-refactor-architect`:** still returns inline (it's not DB-write yet — separate refactor). Save `result.refactoring_plan` to `docs/plans/<feature-name>/refactoring-plan.yaml`, then YOU pipe each `migration_sequence` entry into `task insert -` manually. This is the only path where the orchestrator still inserts contracts itself.
 
 **Don't skip `task init` if cwd is unusual** (`~/.claude/`, `/tmp/<dir>`, anywhere). The DB lives next to the work — wherever the work happens, the DB lives there too. If the user picked an odd cwd, ask: «Стартую `task init` здесь — или предложишь другую папку?»
 
