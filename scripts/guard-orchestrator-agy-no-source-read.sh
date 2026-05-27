@@ -52,6 +52,16 @@ try:
     # quotes / $() are preserved by shlex as part of a single quoted token, so
     # heredocs embedded in `git commit -m "$(cat <<EOF ... EOF)"` are unaffected.
     cmd = cmd.replace("\n", " ; ")
+    # Bash also lets `;` `|` glue directly to adjacent words (`head -30;` is two
+    # commands). shlex parses `-30;` as a single token, so the operator never
+    # appears as its own element and per-segment scan collapses both statements
+    # into one (`head` ends up owning the rest of the line, including .ts args).
+    # Pad ops with surrounding spaces so they tokenise standalone. Order:
+    # double-char ops first (so we do not break `&&` / `||` into two `&`/`|`),
+    # then single `|` left over (only when not part of `||`), then `;`.
+    cmd = cmd.replace("&&", " && ").replace("||", " || ")
+    cmd = re.sub(r"(?<!\|)\|(?!\|)", " | ", cmd)
+    cmd = cmd.replace(";", " ; ")
     toks = shlex.split(cmd, posix=True)
     ops = {"&&", "||", ";", "|"}
     segs = [[]]

@@ -314,3 +314,49 @@ cat src/foo.ts`
   expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
 });
 
+// u-w: regression — `;` and `|` glued directly to adjacent words (no whitespace
+// before the operator: `head -30;`, `cat foo|grep ...`). Bash treats these as
+// regular operators but shlex parses `-30;` as a single literal token, so the
+// operator never tokenises and per-segment scan collapses statements. This was
+// the second failure mode reported after the newline fix landed.
+
+test("u. `head -30;` glued semicolon: subsequent `git diff` with .tsx args is allowed", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: 'git status --short apps/web/src/editorial/ 2>&1 | head -30; echo "---"; git diff HEAD --stat apps/web/src/editorial/ui/articles/article-actions.tsx apps/web/src/editorial/api-client/articles.ts'
+    }
+  });
+
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+
+test("v. glued pipe `cat foo.json|jq` on non-source file is allowed", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "cat package.json|jq .scripts"
+    }
+  });
+
+  expect(exitCode).toBe(0);
+  expect(json).toBeNull();
+});
+
+test("w. glued pipe `cat src/foo.ts|wc -l` is STILL denied (real source-read survives padding)", async () => {
+  const { exitCode, json } = await runHook({
+    agent_type: "dev-orchestrator-agy",
+    tool_name: "Bash",
+    tool_input: {
+      command: "cat src/foo.ts|wc -l"
+    }
+  });
+
+  expect(exitCode).toBe(2);
+  expect(json).not.toBeNull();
+  expect(json.hookSpecificOutput.permissionDecision).toBe("deny");
+});
+
