@@ -307,10 +307,41 @@ export function getJobStatus(jobId: string): JobMeta {
     try {
       const codeStr = readFileSync(exitCodeFile, "utf-8").trim();
       const exitCode = parseInt(codeStr, 10);
-      const isSuccess = exitCode === 0;
+      let isSuccess = exitCode === 0;
+
+      // agy CLI lies on its own --print-timeout: it writes
+      // "Error: timed out waiting for response" to stdout and exits 0. Honoring that exit
+      // code marked the job `success` and left the orchestrator waiting for a YAML envelope
+      // that never came. Same bug class: a zero-byte output.txt (job spawned but agy never
+      // produced any transcript). In both cases, downgrade to `failed` so the orchestrator's
+      // recovery chain can fire instead of silently hanging.
+      let validationError: string | undefined;
+      if (isSuccess) {
+        let body = "";
+        try {
+          const outputFile = join(jobDir, "output.txt");
+          if (existsSync(outputFile)) body = readFileSync(outputFile, "utf-8");
+        } catch {
+          // best-effort — fall through with empty body
+        }
+        const trimmed = body.trim();
+        const isAgyTimeoutLie = /^Error:\s*timed out waiting for response/m.test(trimmed);
+        const isEmpty = trimmed.length === 0;
+        if (isAgyTimeoutLie || isEmpty) {
+          isSuccess = false;
+          validationError = isAgyTimeoutLie
+            ? "agy CLI reported exit 0 but output is the upstream timeout error string"
+            : "agy CLI reported exit 0 but output is empty (no transcript, no envelope)";
+          // Overwrite the lie on disk so subsequent polls + orchestrator see consistent state.
+          try { writeFileSync(exitCodeFile, "1", "utf-8"); } catch {
+            // best-effort
+          }
+        }
+      }
 
       meta.status = isSuccess ? "success" : "failed";
       meta.exitCode = exitCode;
+      if (validationError) meta.error = validationError;
       meta.durationMs = Date.now() - meta.startTime;
 
       // Update Git changes
@@ -415,7 +446,7 @@ export function getJobStatus(jobId: string): JobMeta {
 //  crashed job killed healthy ones. Scanning per-job output.txt removes that coupling.)
 export function scanFatalMarker(filePath: string): string | null {
   const markers = (process.env.AGY_FATAL_MARKERS ||
-    "trajectory converted to zero chat messages,agent executor error")
+    "trajectory converted to zero chat messages,agent executor error,Error: timed out waiting for response")
     .split(",").map((s) => s.trim()).filter((s) => s.length > 0);
   if (markers.length === 0) return null;
 

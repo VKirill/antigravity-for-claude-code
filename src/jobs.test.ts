@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach } from "bun:test";
-import { resetMockState, setMockFiles, setMockReadContent, setMockTmuxSessions, mockFsFiles } from "./test-setup.ts";
+import { resetMockState, setMockFiles, setMockReadContent, setMockTmuxSessions, mockFsFiles, mockExitCodeSessions } from "./test-setup.ts";
 import { scanFatalMarker, getJobStatus, getJobDir, saveJobMeta } from "./utils/jobs.ts";
 import type { JobMeta } from "./utils/jobs.ts";
 
@@ -156,5 +156,84 @@ describe("getJobStatus — grace window for the agy grandchild flush", () => {
     const meta = getJobStatus(jobId);
     expect(meta.status).toBe("running");
     expect(meta.deathSuspectedAt).toBeUndefined();
+  });
+});
+
+// Regression coverage for the agy `exit_code = 0` lie. When agy CLI's own --print-timeout
+// fires it writes "Error: timed out waiting for response" to stdout and exits 0. The wrapper
+// previously trusted exit=0 and reported the job as `success`, leaving the orchestrator to
+// wait forever for an envelope that never came. Same bug class for an empty output.txt
+// (job spawned but agy produced no transcript before being killed). Both must downgrade to
+// `failed` so the orchestrator's autonomous recovery chain can fire.
+describe("getJobStatus — exit_code=0 lie (agy --print-timeout / empty output)", () => {
+  beforeEach(() => {
+    resetMockState();
+  });
+
+  function seedRunningJob(jobId: string, exitCodeContent: string, outputContent: string) {
+    saveJobMeta({ jobId, conversationId: null, status: "running", startTime: Date.now() - 60000 });
+    mockExitCodeSessions.add(jobId);
+    mockFsFiles.set(`${getJobDir(jobId)}/exit_code.txt`, exitCodeContent);
+    mockFsFiles.set(`${getJobDir(jobId)}/output.txt`, outputContent);
+  }
+
+  test("downgrades exit=0 + 'Error: timed out waiting for response' to failed", () => {
+    const jobId = "task-timeout-lie";
+    seedRunningJob(jobId, "0\n", "Error: timed out waiting for response\n");
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
+    expect(meta.error).toContain("timeout error string");
+    expect(meta.exitCode).toBe(0); // preserved for forensics
+    // exit_code.txt overwritten so the next poll sees consistent failed state
+    expect(mockFsFiles.get(`${getJobDir(jobId)}/exit_code.txt`)).toBe("1");
+  });
+
+  test("downgrades exit=0 + empty output.txt (0 bytes) to failed", () => {
+    const jobId = "task-empty-output";
+    seedRunningJob(jobId, "0\n", "");
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
+    expect(meta.error).toContain("output is empty");
+    expect(mockFsFiles.get(`${getJobDir(jobId)}/exit_code.txt`)).toBe("1");
+  });
+
+  test("downgrades exit=0 + whitespace-only output.txt to failed (no envelope, no transcript)", () => {
+    const jobId = "task-whitespace-output";
+    seedRunningJob(jobId, "0\n", "   \n\n  \t\n");
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
+  });
+
+  test("keeps exit=0 + real transcript as success (happy path not broken)", () => {
+    const jobId = "task-happy";
+    seedRunningJob(
+      jobId,
+      "0\n",
+      "tool: ok\nresult:\n  summary: done\n  status: success\n  errors: []\n"
+    );
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("success");
+    expect(meta.exitCode).toBe(0);
+    expect(meta.error).toBeUndefined();
+  });
+
+  test("exit!=0 stays failed regardless of output (no over-eager re-validation)", () => {
+    const jobId = "task-nonzero";
+    seedRunningJob(jobId, "1\n", "anything");
+
+    const meta = getJobStatus(jobId);
+    expect(meta.status).toBe("failed");
+    expect(meta.exitCode).toBe(1);
+  });
+
+  test("scanFatalMarker default list now includes the agy timeout pattern", () => {
+    setMockFiles([{ name: "output.txt", mtime: 1, size: 200 }]);
+    setMockReadContent("some progress\nError: timed out waiting for response\ntail\n");
+    expect(scanFatalMarker("/cwd/.claude/jobs/task-fmarker/output.txt"))
+      .toBe("Error: timed out waiting for response");
   });
 });
