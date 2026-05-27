@@ -3,25 +3,74 @@ import { loadPrompt } from "../utils/prompts.ts";
 import { startTmuxJob, getJobStatus, getJobDir, scanFatalMarker, loadJobMeta, tailLogLines } from "../utils/jobs.ts";
 import { buildFooter } from "../utils/observability.ts";
 import { formatWorkerResult, parseEnvelopeStrict } from "../utils/result-envelope.ts";
+import { readTaskRow, buildDispatchPreamble } from "../utils/orchestrator-db.ts";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
+const TASK_ID_RE = /^[A-Za-z0-9._-]+$/;
+
 export async function handleDiscussWithAntigravityAsyncStart(args: any) { // guardian: allow — dynamic MCP tool args, validated at use
-  const prompt = String(args?.prompt || "");
+  // BY-REFERENCE PATH: caller passed task_id → MCP reads contract from
+  // <cwd>/.claude/orchestrator.db itself, synthesizes a minimal dispatch
+  // preamble, and the worker self-fetches the full contract via `task export`.
+  // Conversation history of the orchestrator shrinks from ~5-7k tokens per
+  // dispatch (inline contract) to ~30 tokens (just the task_id reference).
+  const taskIdArg = args?.task_id ? String(args.task_id) : null;
+  const cwdArg = args?.cwd ? String(args.cwd) : null;
+
+  let prompt = String(args?.prompt || "");
+
+  if (taskIdArg) {
+    if (!TASK_ID_RE.test(taskIdArg)) {
+      return { content: [{ type: "text", text: `Error: invalid task_id (allowed: [A-Za-z0-9._-]): ${taskIdArg}` }], isError: true };
+    }
+    if (!cwdArg) {
+      return { content: [{ type: "text", text: "Error: cwd is required when task_id is passed (must point at the project containing .claude/orchestrator.db)" }], isError: true };
+    }
+    // Resolve the contract: presence check + capture title/assignee/risk for the preamble.
+    let row;
+    try {
+      row = readTaskRow(cwdArg, taskIdArg);
+    } catch (e) {
+      return { content: [{ type: "text", text: `Error reading task ${taskIdArg}: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
+    }
+    if (!row) {
+      return { content: [{ type: "text", text: `Error: task ${taskIdArg} not found in ${cwdArg}/.claude/orchestrator.db — did the orchestrator `+"`task insert`"+` it yet?` }], isError: true };
+    }
+    // Synthesize the minimal preamble. The full role manual is still prepended
+    // below by the existing `worker:` parameter path. The full contract stays
+    // in the DB; the worker fetches it via `task export $TASK_ID`.
+    const skillsCsvForPreamble = Array.isArray(args?.skills) ? args.skills.map(String).join(", ") : "";
+    prompt = buildDispatchPreamble({
+      taskId: row.id,
+      cwd: cwdArg,
+      skillsCsv: skillsCsvForPreamble,
+      assigneeAgent: row.assignee_agent,
+      title: row.title,
+    });
+    // Caller's `prompt:` (if any) is IGNORED when task_id is set — that's the
+    // whole point of by-reference. A passed prompt would re-introduce the
+    // bloat we're optimising away.
+  }
+
   if (!prompt) {
-    return { content: [{ type: "text", text: "Error: prompt is required" }], isError: true };
+    return { content: [{ type: "text", text: "Error: either task_id (preferred) or prompt is required" }], isError: true };
   }
 
   // Auto-detect task ID from the prompt content if conversationId is not explicitly specified
   let conversationIdToUse = args?.conversationId ? String(args.conversationId) : null;
-  
+
+  if (!conversationIdToUse && taskIdArg) {
+    // Direct task_id wins — use it as the conversation key for resumability.
+    conversationIdToUse = taskIdArg;
+  }
   if (!conversationIdToUse) {
     const taskMatch = prompt.match(/(?:^|\n)(?:id|task|task_id):\s*(TASK-\d+)/i) || prompt.match(/(?:id|task|task_id):\s*(TASK-\d+)/i);
     if (taskMatch) {
       conversationIdToUse = taskMatch[1];
     }
   }
-  
+
   // Fallback to activeConversationId from memory if still not resolved
   if (!conversationIdToUse) {
     conversationIdToUse = sessionState.activeConversationId;

@@ -12,8 +12,8 @@ describe("discuss.ts tool tests", () => {
     transport = new MockTransport();
     try {
       await server.close();
-    } catch (e) {}
-    // @ts-ignore
+    } catch (e) { /* guardian: allow — server may not be open on first run */ }
+    // @ts-expect-error guardian: allow — MockTransport satisfies the Transport contract structurally
     await server.connect(transport);
   });
 
@@ -47,7 +47,7 @@ describe("discuss.ts tool tests", () => {
     expect(lastSpawnStdin).toBe("Verify the architecture.");
 
     expect(transport.sentMessages.length).toBe(1);
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.id).toBe(2);
     expect(response.result.content[0].text).toContain("Architect analysis complete.");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: new -->");
@@ -88,7 +88,7 @@ describe("discuss.ts tool tests", () => {
     expect(lastSpawnStdin).toBe("Second message");
 
     expect(transport.sentMessages.length).toBe(2);
-    const response: any = transport.sentMessages[1];
+    const response: any = transport.sentMessages[1]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.result.content[0].text).toContain("Second reply");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: session-456 -->");
   });
@@ -114,7 +114,7 @@ describe("discuss.ts tool tests", () => {
     expect(lastSpawnArgs).toContain("--conversation");
     expect(lastSpawnArgs).toContain("custom-id-789");
 
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.result.content[0].text).toContain("Switched reply");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: custom-id-789 -->");
   });
@@ -137,7 +137,7 @@ describe("discuss.ts tool tests", () => {
     expect(lastSpawnArgs).toContain("--conversation");
     expect(lastSpawnArgs).toContain("TASK-456");
 
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.result.content[0].text).toContain("<!-- active_session_id: TASK-456 -->");
     expect(sessionState.activeConversationId).toBe("TASK-456");
   });
@@ -184,7 +184,7 @@ describe("discuss.ts tool tests", () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain("Fatal API error");
   });
@@ -209,7 +209,7 @@ describe("discuss.ts tool tests", () => {
     await new Promise(resolve => setTimeout(resolve, 2100));
 
     expect(transport.sentMessages.length).toBe(1);
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.id).toBe(100);
     expect(response.result.isError).toBeUndefined();
     expect(response.result.content[0].text).toContain("Success after retry");
@@ -231,7 +231,7 @@ describe("discuss.ts tool tests", () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.result.content[0].text).toContain("Reply with no files");
     expect(response.result.content[0].text).toContain("<!-- active_session_id: new -->");
     expect(sessionState.activeConversationId).toBeNull();
@@ -268,7 +268,7 @@ describe("discuss.ts tool tests", () => {
     expect(sessionState.activeConversationId).toBeNull();
     expect(sessionState.pendingSystemPrompt).toBe("Design systems only.");
 
-    const resetResponse: any = transport.sentMessages[1];
+    const resetResponse: any = transport.sentMessages[1]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(resetResponse.result.content[0].text).toContain("session has been reset");
     expect(resetResponse.result.content[0].text).toContain("Design systems only.");
 
@@ -315,7 +315,7 @@ describe("discuss.ts tool tests", () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(transport.sentMessages.length).toBe(1);
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     const text = response.result.content[0].text;
     expect(text).toContain("<!-- active_session_id: session-obs -->");
     expect(text).toMatch(/<!-- agy: \d+\.\ds \| files_changed: src\/tools\/discuss\.ts, src\/utils\/observability\.ts -->/);
@@ -341,7 +341,8 @@ describe("discuss.ts tool tests", () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(lastSpawnStdin).toContain("coder-worker");
+    // worker-coder.md preamble identifies the role (was "coder-worker" verbiage; rewrite uses "worker-coder")
+    expect(lastSpawnStdin).toContain("worker-coder");
     expect(lastSpawnStdin).toContain("coder-craft, typescript");
     expect(lastSpawnStdin).not.toContain("{{skills}}");
     expect(lastSpawnStdin).toContain("---\n\nWrite some code");
@@ -363,7 +364,7 @@ describe("discuss.ts tool tests", () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    const response: any = transport.sentMessages[0];
+    const response: any = transport.sentMessages[0]; // guardian: allow — test inspects raw JSON-RPC response shape
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain("worker prompt not found");
   });

@@ -67,9 +67,12 @@ orchestrator decides whether to widen scope.
 
 Apply both throughout. **Do not re-derive their content** — it's already in your context.
 
+**Task-specific skills (injected for THIS run):** {{skills}}
+
 The contract may carry additional `skill_hints` (stack skill like `typescript`, `react`,
-`prisma`; or methodology like `tdd`, `systematic-debugging`). Read each named SKILL.md
-**via the Read tool**, once, before coding:
+`prisma`; or methodology like `tdd`, `systematic-debugging`). The orchestrator passes
+them in the line above as a comma-separated list. Read each named SKILL.md **via the
+Read tool**, once, before coding:
 
 ```
 Read ~/.agents/skills/<skill_name>/SKILL.md

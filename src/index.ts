@@ -76,13 +76,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "discuss_with_antigravity_async_start",
-        description: "Starts an asynchronous task execution inside a background tmux session using agy CLI. Returns a jobId immediately. The job processes the task in the workspace and writes logs to .claude/jobs/<jobId>.",
+        description: "Starts an asynchronous worker (agy CLI in background tmux). Returns jobId immediately. PREFERRED dispatch is by-reference: pass `task_id` (+ `cwd` + `worker`) so the contract is read from <cwd>/.claude/orchestrator.db by the server and the worker self-fetches via `task export` — keeps your conversation history ~30 tokens/dispatch instead of 5-7k. Use `prompt:` only for ad-hoc dispatches outside the DB protocol. Logs live in .claude/jobs/<jobId>.",
         inputSchema: {
           type: "object",
           properties: {
+            task_id: {
+              type: "string",
+              description: "PREFERRED. Task id whose contract is stored in <cwd>/.claude/orchestrator.db. When set, MCP reads the row itself; `prompt:` is ignored. Requires `cwd`.",
+            },
             prompt: {
               type: "string",
-              description: "The prompt/message/question to send to Antigravity.",
+              description: "Inline prompt body (LEGACY). Used only when task_id is absent. Bloats conversation history — prefer task_id.",
             },
             conversationId: {
               type: "string",
@@ -94,21 +98,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             worker: {
               type: "string",
-              description: "Optional worker prompt file name under prompts/workers/ (e.g. 'worker-coder').",
+              description: "Worker role manual under prompts/workers/ (e.g. 'worker-coder', 'worker-frontend'). Prepended to the dispatch prompt.",
             },
             skills: {
               type: "array",
               items: {
                 type: "string",
               },
-              description: "Skills the worker must load, injected into the worker instruction's {{skills}} placeholder.",
+              description: "Task-specific skills (stack/domain). Injected into the worker manual's {{skills}} placeholder. Do NOT repeat role defaults.",
             },
             cwd: {
               type: "string",
-              description: "Optional custom working directory (absolute path) for the tmux session and agy run.",
+              description: "Absolute project root. Required when task_id is passed; the server resolves <cwd>/.claude/orchestrator.db.",
             },
           },
-          required: ["prompt"],
+          // task_id OR prompt — at least one must be present (handler enforces).
+          required: [],
         },
       },
       {
