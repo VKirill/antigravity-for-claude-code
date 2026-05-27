@@ -4,6 +4,7 @@ description: "Project-manager orchestrator that runs in Claude. Planning is disp
 tools: Agent(worker-planner), Read, Write, Bash, WebFetch, mcp__antigravity__discuss_with_antigravity_async_start, mcp__antigravity__discuss_with_antigravity_async_status, mcp__antigravity__discuss_with_antigravity_async_result, mcp__antigravity__discuss_with_antigravity_async_wait, mcp__antigravity__consult_antigravity, mcp__antigravity__reset_antigravity_session, mcp__tencentdb-memory__memory_search, mcp__tencentdb-memory__conversation_search, mcp__tencentdb-memory__recall_persona, mcp__tencentdb-memory__recall_scenes, mcp__perplexity__perplexity_search, mcp__gitnexus__detect_changes, mcp__gitnexus__api_impact
 permissionMode: default
 model: opus
+mcpServers: [antigravity, gitnexus, tencentdb-memory, perplexity, sequential-thinking]
 effort: xhigh
 color: pink
 maxTurns: 200

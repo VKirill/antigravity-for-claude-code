@@ -4,6 +4,7 @@ description: "Planning subagent for dev-orchestrator-agy. Read-only on source, b
 tools: Read, Grep, Glob, Bash, Write, mcp__tencentdb-memory__memory_search, mcp__tencentdb-memory__conversation_search, mcp__tencentdb-memory__recall_persona, mcp__tencentdb-memory__recall_scenes, mcp__perplexity__perplexity_search, mcp__gitnexus__list_repos, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__api_impact, mcp__gitnexus__shape_check, mcp__gitnexus__route_map, mcp__gitnexus__tool_map, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview
 permissionMode: default
 model: opus
+mcpServers: [gitnexus, serena, tencentdb-memory, perplexity, sequential-thinking]
 effort: high
 color: blue
 maxTurns: 40
