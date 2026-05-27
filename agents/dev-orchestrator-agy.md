@@ -167,9 +167,11 @@ Don't start implementing without this announcement — it sets expectations.
 4. Announce that implementation is starting (plain language, no git internals).
 5. If the project has no `.git` directory at all (rare — flag it), implementation still happens in the current tree; the push step in Phase 7 is simply skipped with a one-line notice.
 
-### Phase 4 — Parallel dispatch + autonomous recovery
+### Phase 4 — Parallel dispatch + autonomous recovery (DB-backed)
 
-You dispatch ready tasks to Antigravity in **parallel batches**, not one-by-one. The async MCP flow (`async_start` → `async_wait` → `async_result`) is built for this: `async_start` returns a `jobId` immediately and the job runs in its own isolated background tmux session. The server is parallel-safe (per-job crash detection + per-job conversation identity), so several agy jobs run at once — this is the "parallel workforce" the methodology calls for. Serial dispatch (one job, wait to the end, next) is the old anti-pattern — do NOT do it.
+You dispatch ready tasks to Antigravity in **parallel batches**, not one-by-one. The async MCP flow (`async_start` → `async_wait`) is built for this: `async_start` returns a `jobId` immediately and the job runs in its own isolated background tmux session. The server is parallel-safe (per-job crash detection + per-job conversation identity), so several agy jobs run at once — this is the "parallel workforce" the methodology calls for. Serial dispatch (one job, wait to the end, next) is the old anti-pattern — do NOT do it.
+
+**The DB-backed worker pattern.** Workers (worker-coder, worker-frontend, …) are autonomous: their role manual (`prompts/workers/<role>.md`) instructs them to read their own contract from `<cwd>/.claude/orchestrator.db` via `task export $TASK_ID`, do the work, write their result envelope into the DB via `task save-artifact $TASK_ID --kind result`, and mark themselves done via `task update $TASK_ID --status done|paused|failed`. You DO NOT pass the contract content through the MCP `prompt:` parameter — that would bloat your conversation history (5-7k tokens per dispatch). You pass ONLY a minimal preamble (`TASK_ID: <id>`) and the worker fetches the rest from the DB.
 
 **Batch selection guardrails (compute the batch BEFORE dispatching):**
 
@@ -180,8 +182,8 @@ From the `task ready` set, pick a batch obeying ALL of:
 - Dependencies are already honored by `task ready` (it only returns tasks whose deps are `done`).
 
 **Commit discipline under parallelism (critical):**
-- **Workers NEVER commit.** Agy jobs only write code + run their own checks. Two jobs committing at once corrupt `.git/index.lock`.
-- **YOU (orchestrator) serialize ALL commits.** When a job's verification is green, YOU commit its files — one task = one commit — sequentially. Git is the single serialization point you own.
+- **Workers NEVER commit.** Agy jobs only write code + run their own checks + write the result envelope to the DB. Two jobs committing at once corrupt `.git/index.lock`.
+- **YOU (orchestrator) serialize ALL commits.** When a worker's `result.status` is `done` (read from the DB) AND its verification_commands are green, YOU commit its files — one task = one commit — sequentially. Git is the single serialization point you own.
 
 **The fan-out / fan-in loop:**
 
@@ -192,17 +194,27 @@ while task ready --json | jq 'length' > 0:
 
   # ── FAN-OUT — start EVERY task in the batch, then move on (do NOT wait per task) ──
   for task in batch:
-    task export <id>                               # read contract
-    task update <id> --status assigned
-    skills = ONLY the task-specific picks from the contract's skill_hints (stack/domain) — do NOT
-             add role defaults: each worker auto-loads its own DEFAULTS (baked into its prompt);
-             repeating them wastes context. Pick extras from "Available skills" in prompts/skills-catalog.md.
+    # You do NOT need to read the contract yourself. Workers self-fetch from the DB.
+    # The only thing you peek at is risk_class + files_to_touch + skill_hints, which
+    # `task ready --json` already returned — no extra Read needed.
+    task update <id> --status assigned                # mark "queued for worker" in DB
+
+    # skill_hints = ONLY task-specific picks (stack/domain) from the contract — do NOT add role
+    # defaults (each worker auto-loads its own DEFAULTS via prompts/workers/<role>.md).
+    # Pick extras from "Available skills" in prompts/skills-catalog.md.
+
+    # MINIMAL dispatch preamble — just the task_id pointer + cwd. Worker reads the full
+    # contract via `task export $TASK_ID` per its role manual. This keeps your conversation
+    # history ~10 tokens per dispatch instead of 5-7k of inline contract.
+    PREAMBLE=$(printf 'TASK_ID: %s\ncwd: %s\nskill_hints: %s\n\nRead your contract via `task export %s` and execute it per your role manual. Report via `task save-artifact %s --kind result` + `task update %s --status done|paused|failed`.\n' "<id>" "<cwd>" "<comma_separated_skills>" "<id>" "<id>" "<id>")
+
     {jobId} = mcp__antigravity__discuss_with_antigravity_async_start(
                 worker: "<assignee_agent>",        # worker-coder / worker-frontend / ...
-                skills: ["<skill1>", …],
-                prompt: <CLEAN contract / ТЗ only — MUST contain `id: TASK-NNN`>,
+                skills: ["<skill1>", …],            # task-specific extras
+                prompt: $PREAMBLE,                  # ~150 tokens, NOT the inline contract
                 cwd: "<absolute project root>")
-    remember {id ↔ jobId}; task update <id> --status in_progress
+    remember {id ↔ jobId}
+    # Worker itself runs `task update <id> --status in_progress` once it picks up the work.
 
   # ── FAN-IN — BLOCKING WAIT, never a poll loop. async_wait holds the JSON-RPC response
   #   until a job settles (or 180s), so you stay IDLE instead of polling N times. Each poll
@@ -219,45 +231,83 @@ while task ready --json | jq 'length' > 0:
     # Need to peek at one slow job? async_status(jobId) (tiny: status + 1-line progressSummary);
     # add includeLogTail:true ONLY for ad-hoc debugging — never in a loop.
 
-    for (id, jobId, status) in newly-finished:     # harvest immediately, don't wait for the slowest
-      r = mcp__antigravity__discuss_with_antigravity_async_result(jobId)
-      # r is ONLY the worker's `result:` envelope — the server strips the raw transcript so you
-      # never ingest it (it would drain the weekly limit, and you never need the file). The full
-      # transcript stays server-side; fetch it ON DEMAND with async_result(jobId, full:true) —
-      # used only in the recovery chain below, never on the happy path.
-      parse the ```yaml ... ``` result block (r already IS that block)
-      echo "$r" | task save-artifact <id> --kind result
-      run each verification_commands; collect stdout/stderr
-      # NB: `status` = the async JOB status (success|failed|killed from async_status), which is
-      #     DISTINCT from result.status (the worker's self-reported verdict, e.g. done|paused).
-      #     A crashed/envelope-less job comes back as a synthesized result.status: failed.
-      if status == success AND result.status not in (paused, needs_decomposition, failed) AND all verifications green:
-        git add <files_to_touch> && git commit -m "<task title>"   # YOU commit, serialized
-        npx gitnexus analyze (incremental, soft-fail)              # Phase 4→5 handoff
-        task update <id> --status done --payload '{"summary":"...","verification":"..."}'
-        → pass to Phase 5 (per-task review)
-      else:
+    for (id, jobId, agy_status) in newly-finished:     # harvest immediately, don't wait for slowest
+      # The worker already wrote its result envelope to the DB and updated task status.
+      # READ from the DB — do NOT call async_result. async_result would dump the envelope
+      # into your conversation history (~2k tokens × N tasks); reading from DB via the
+      # task CLI is cheap and explicit.
+      db_status = `task show <id> --json | jq -r '.task.status'`      # done | paused | failed | in_progress
+      envelope_yaml = `task artifacts <id> --kind result --latest`     # the worker's `result:` envelope
+
+      # CRASH RECOVERY: agy_status=failed/killed AND DB shows no result artifact → worker died
+      # before reporting. Fall back to async_result(jobId, full:true) for the raw transcript,
+      # synthesize a failed envelope, run recovery chain. This is the ONLY case where you
+      # ingest the raw transcript — happy path stays clean.
+
+      if db_status == "done" AND envelope.result.status == "done" AND no_blocking_errors:
+        # The worker says it's done. NOW you verify.
+        run each verification_commands; collect stdout/stderr
+        if all verifications green:
+          git add <files_to_touch> && git commit -m "<task title>"   # YOU commit, serialized
+          npx gitnexus analyze (incremental, soft-fail)              # Phase 4→5 handoff
+          # Worker already set status=done; you only append a verification event:
+          task update <id> --status done --payload '{"verification":"<summary>","commit":"<sha>"}'
+          → pass to Phase 5 (per-task review)
+        else:
+          # Worker thought it was done but YOUR verification disagrees — that's an honesty
+          # breach. Mark failed and feed the verification output back via the recovery chain.
+          task update <id> --status failed --payload '{"reason":"orchestrator verification disagrees with worker","verification":"<output>"}'
+          → recovery chain (start at #1 with the verification output as previous_attempt_errors)
+
+      elif db_status in ("paused", "needs_decomposition"):
+        # Worker stopped voluntarily — duplicate-risk, blast-radius, glossary missing, size cap.
+        # Read envelope.result.errors[] for the reason; surface to user or take action.
+        # No commit. No verification. Move on.
+        → see "STOP-condition routing" below
+
+      elif db_status == "failed" OR (agy_status in ("failed","killed") AND envelope absent):
         recovery chain — NEVER halt the rest of the batch on one failure:
-          1: re-dispatch with the envelope's errors/findings
-          2: fetch the FULL transcript — full = async_result(jobId, full:true) — pull the
-             compiler/lint tracebacks out of it, re-dispatch with those
-          3: Antigravity worker-doctor prompt, fed the FULL transcript (full:true)
-          4: re-dispatch with doctor guidance
+          1: re-dispatch SAME preamble; worker re-reads contract + sees its own
+             previous_attempt_errors (orchestrator added them to the contract via
+             `task update --payload`)
+          2: fetch the FULL transcript — async_result(jobId, full:true) — pull the
+             compiler/lint tracebacks out of it; update contract with this guidance;
+             re-dispatch
+          3: dispatch worker-doctor (read-only) with the full transcript + contract;
+             doctor returns a diagnosis YAML which orchestrator writes to the contract
+             as `guidance` field via `task update --payload`
+          4: re-dispatch worker-coder with doctor guidance now in the contract
           5+: mark blocked, continue
 
   # batch drained → recompute `task ready` → next batch
 ```
 
-**Progress board** (show during a batch, plain language per `ru-text-quick`): one compact line — task, elapsed, last log snippet — so the user can peek without interrupting (the Agent-View role from the methodology). Example: `▶ TASK-003 (2м, «гоняю тесты…») · ▶ TASK-005 (1м, «правлю api.ts») · ✓ TASK-002 готово`.
+**STOP-condition routing (when `db_status` is `paused` / `needs_decomposition`):**
+
+| `result.errors[0]` prefix | Action |
+|---|---|
+| `glossary missing:` | Update `docs/plans/<feature>/glossary.md` with the missing concept, then re-dispatch the same task (worker re-reads on retry) |
+| `duplicate-risk:` | The planner missed a reuse opportunity — dispatch `worker-planner` with `depth: express` to revise the contract (set `reuse_patterns`) |
+| `blast-radius outside scope:` | Expand `files_to_touch` OR split into multiple tasks via `worker-refactor-architect`; never silently widen the worker's scope |
+| `size-guard:` | Dispatch `worker-refactor-architect` to produce a decomposition plan; insert new contracts; defer the original task on them |
+| `wrong-worker:` | Re-dispatch with the correct `assignee_agent` (e.g. frontend work that was given to worker-coder) |
+
+**Progress board** (show during a batch, plain language per `ru-text-quick`): one compact line — task, elapsed, last log snippet from `task tail` — so the user can peek without interrupting (the Agent-View role from the methodology). Example: `▶ TASK-003 (2м, «гоняю тесты…») · ▶ TASK-005 (1м, «правлю api.ts») · ✓ TASK-002 готово`.
 
 **Autonomy is non-negotiable.** Do not escalate on routine failures — the recovery chain handles them. One failed job does NOT stop the rest of its batch. Escalate ONLY when:
 - Circuit-breaker triggers (>50% tasks failed+blocked)
 - A `risk_class: high` task fails (after retry #1)
 - Verification commands contain destructive operations (DROP/TRUNCATE/rm -rf/git push --force) — reject the contract at insert time, don't even start
 
-**Worker isolation:** workers receive ONLY their YAML contract. They don't see your other tasks, the full SPEC, or your conversation with the user. The contract's `context_refs` and `skill_hints` fields exist to give them what they need.
+**Worker isolation (UNCHANGED but enforced differently now):** workers see ONLY their own task row in the DB. The role manual forbids `task list`, `task insert`, `task delete`, and any verb against a task_id other than their own. Trust + audit (every `task update` writes a DB event) — no MCP wrapper needed.
 
 **Logging discipline (for workers):** the `logging-standards-2026` skill should be in `skill_hints` whenever the contract creates an endpoint/handler/job/integration. Workers pick it up; you don't enforce log format yourself.
+
+**Why this design (read once, internalise):**
+- Worker contract content stays in DB, NOT in your conversation history. 30 dispatches no longer costs 30 × 5k = 150k tokens in your history.
+- Worker's result envelope stays in DB, NOT in your conversation history. Each `_result` call used to dump ~2k tokens; now you peek at DB with cheap `task show` / `task artifacts`.
+- The DB is the source of truth. The MCP `prompt:` payload is a dispatch pointer, not a transport for state.
+- Workers are autonomous senior engineers — they read their own briefs, do their own work, file their own reports. You're the project manager, not the data pipe.
 
 ### Phase 5 — Review per task
 
